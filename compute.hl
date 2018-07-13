@@ -1,0 +1,63 @@
+let RIGHT_BETA th =
+    try TRANS th (BETA_CONV (rhs (concl th)))
+    with _ -> failwith "RIGHT_BETA";;
+
+let RIGHT_ETA thm =
+    try TRANS thm (ETA_CONV (rhs (concl thm)))
+    with _ -> failwith "RIGHT_ETA";;
+
+let MK_comb th =
+    let rator, rand = dest_comb (rhs (concl th)) in
+    let mka th1 th2 = TRANS th (MK_COMB (th1, th2)) in
+    (REFL rator, REFL rand, mka);;
+
+let MK_abs th =
+    let bvar, body = dest_abs (rhs (concl th)) in
+    (bvar, REFL body, fun th1 -> TRANS th (ABS bvar th1));;
+
+(*** compute_rules.sml ***)
+
+(* 
+type ('a, 'b, 'c) stack =
+    | Ztop
+    | Zrator of { rand: 'a; ctx: ('a, 'b, 'c) stack }
+    | Zrand of { rator: 'b; ctx: ('a, 'b, 'c) stack }
+    | Zabs of { bvar: 'c; ctx: ('a, 'b, 'c) stack };;
+*)
+
+type ('a, 'b, 'c) stack = 
+      Ztop 
+    | Zrator of 'a * ('a, 'b, 'c) stack
+    | Zrand of 'b * ('a, 'b, 'c) stack
+    | Zabs of 'c * ('a, 'b, 'c) stack;;
+
+exception Dead_code of string;;
+
+let rhs_concl = rand o concl;;
+let refl_thm = REFL;;
+let trans_thm = TRANS;;
+let beta_thm = RIGHT_BETA;;
+let evaluate th = th;;
+
+let try_eta thm = try RIGHT_ETA thm with _ -> thm;;
+
+(*---------------------------------------------------------------------------
+ * Precondition: f(arg) is a closure corresponding to b.
+ * Given   (arg,(|- M = (a b), Stk)),
+ * returns (|- a = a, (<fun>,(|- b = b, f(arg)))::Stk)
+ * where   <fun> =  (|- a = a' , |- b = b') |-> |- M = (a' b')
+ *---------------------------------------------------------------------------*)
+
+
+let push_in_stk f (arg, (th, stk)) =
+    let (tha, thb, mka) = MK_comb th in
+    (tha, Zrator ((mka, (thb, f arg)), stk));;
+
+let push_skip_stk f (arg, (th, stk)) =
+    let (tha, thb, mka) = MK_comb th in
+    (tha, Zrand ((C mka, true, (thb, f arg)), stk));;
+
+let push_lam_in_stk (th, stk) =
+    let (_, thb, mkl) = MK_abs th in
+    (thb, Zabs (try_eta o mkl, stk));;
+
