@@ -15,6 +15,13 @@ let MK_abs th =
   let bvar, body = dest_abs (rhs (concl th)) in
   (bvar, REFL body, fun th1 -> TRANS th (ABS bvar th1));;
 
+let rec BODY_CONJUNCTS th =
+  if is_forall (concl th) then
+    BODY_CONJUNCTS (SPEC_ALL th)
+  else if is_conj (concl th) then
+    BODY_CONJUNCTS (CONJUNCT1 th) @ BODY_CONJUNCTS (CONJUNCT2 th)
+  else [th];;
+
 (*** compute_rules.sml ***)
 
 type ('a, 'b, 'c) stack = 
@@ -51,5 +58,42 @@ let push_skip_stk f (arg, (th, stk)) =
 let push_lam_in_stk (th, stk) =
   let (_, thb, mkl) = MK_abs th in
   (thb, Zabs (try_eta o mkl, stk));;
+
+(*---------------------------------------------------------------------------
+  Does conversions between
+                              FUNIFY
+    |- (c t_1 .. t_n x) = M    --->   |- (c t_1 .. t_n) = \x. M
+                               <---
+                             UNFUNIFY
+   In UNFUNIFY, we must avoid choosing an x that appears free in t_1..t_n.
+ ---------------------------------------------------------------------------*)
+
+let FUNIFY thm =
+  try 
+    let x = rand (lhs (concl thm)) in
+    CONV_RULE (RATOR_CONV (RAND_CONV (REWR_CONV ETA_AX))) (ABS x thm)
+  with _ -> failwith "FUNIFY";;
+
+let UNFUNIFY thm =
+  try
+    let lhs, rhs = dest_eq (concl thm) in
+    let x = variant (frees lhs) (fst (dest_abs rhs)) in
+    CONV_RULE (RAND_CONV BETA_CONV) (AP_THM thm x)
+  with _ -> failwith "UNFUNIFY";;
+
+let repeat_on_conj f thm =
+  let rec iter th = try iter (f th) with _ -> th in
+  end_itlist CONJ (List.map iter (BODY_CONJUNCTS thm));;
+
+let lazyfy_thm = repeat_on_conj FUNIFY;;
+let strictify_thm = repeat_on_conj UNFUNIFY;;
+
+(* Ensures a theorem is an equality. *)
+let eq_intro thm =
+  if is_eq (concl thm) then thm else
+  if is_neg (concl thm) then EQF_INTRO thm
+  else EQT_INTRO thm;;
+
+
 
 
