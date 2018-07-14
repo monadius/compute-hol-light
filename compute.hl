@@ -95,5 +95,166 @@ let eq_intro thm =
   else EQT_INTRO thm;;
 
 
+(*** clauses.sml ***)
 
+(*---------------------------------------------------------------------------
+ * Checking that a given thm is a reduction rule we can handle:
+ *         (c p1...pn) = rhs
+ * with p1...pn  either a const applied to patterns or a free variable.
+ *---------------------------------------------------------------------------*)
+
+type pattern = 
+    Pvar of int 
+  | Papp of term * pattern list;;
+
+let check_arg_form trm =
+  let rec chk t stk free =
+    if is_comb t then
+      let rator, rand = dest_comb t in
+      let free', pat1 = chk rand [] free in
+      chk rator (pat1 :: stk) free'
+    else if is_var t then
+      if stk = [] then
+        let newi = List.length free in
+        try (free, Pvar (newi - index t free - 1))
+        with _ -> (t :: free, Pvar newi)
+      else 
+        failwith ("check_arg_form: " ^ fst (dest_var t) ^ " occurs as a variable on lhs")
+    else if is_const t then
+      (free, Papp (t, List.rev stk))
+    else
+      failwith ("check_arg_form: lambda abstraction not allowed on lhs") 
+  in
+  match chk trm [] [] with
+    | (fv, Papp (head, args)) -> (List.rev fv, head, args)
+    | _ -> failwith "check_arg_form: ill-formed lhs";;
+
+(*---------------------------------------------------------------------------
+ * CLOS denotes a delayed substitution (closure).
+ * CST denotes an applied constant. Its first argument is the head constant;
+ *   the second is the list of its arguments (we keep both the term and its
+ *   abstract representation); the last one is the set of rewrites that
+ *   still have a chance to be used, ie. those with a lhs wider than the
+ *   number of applied args.
+ * NEUTR is a slight improvement of CST with an empty list of rewrites, so
+ *   that arguments of a variable are immediatly strongly reduced.
+ *---------------------------------------------------------------------------*)
+
+type 'a cst_rec = {
+  head: term;
+  args: (term * 'a fterm) list;
+  rws: 'a;
+  skip: int option
+}
+and 'a clos_rec = {
+  env: 'a fterm list;
+  term: 'a dterm
+}
+and 'a fterm =
+    Const of 'a cst_rec
+  | Neutr
+  | Clos of 'a clos_rec
+
+(*---------------------------------------------------------------------------
+ * An alternative representation of terms, with all information needed:
+ * - they are real de Bruijn terms, so that abstraction destruction is in
+ *   constant time.
+ * - application is n-ary (slight optimization)
+ * - we forget the names of variables
+ * - constants are tagged with the set of rewrites that apply to it.
+ *   It's a reference since dterm is used to represent rhs of rewrites,
+ *   and fixpoints equations add rewrites for a constant that appear in the
+ *   rhs.
+ *---------------------------------------------------------------------------*)
+
+and 'a dterm =
+    Bv of int
+  | Fv
+  | Cst of term * ('a * int option) ref
+  | App of 'a dterm * 'a dterm list  (* order: outermost ahead *)
+  | Abs of 'a dterm;;
+
+(* Invariant: the first arg of App never is an App. *)
+
+let appl = function
+  | App (a, l1), arg -> App (a, arg :: l1)
+  | t, arg -> App (t, [arg]);;
+
+(*---------------------------------------------------------------------------
+ * Type variable instantiation in dterm. Make it tail-recursive ?
+ *---------------------------------------------------------------------------*)
+
+let inst_type_dterm = function
+  | [], v -> v
+  | tysub, v ->
+    let rec tyi_dt = function
+      | Cst (c, dbsk) -> Cst (inst tysub c, dbsk)
+      | App (h, l) -> App (tyi_dt h, map tyi_dt l)
+      | Abs v -> Abs (tyi_dt v)
+      | v -> v in
+    tyi_dt v;;
+
+
+type action =
+    Rewrite of rewrite list
+  | Conv of (term -> thm * db fterm)
+
+and try_rec = {
+  hcst: term;
+  rws: action;
+  tail: db
+}
+
+and db =
+    End_db
+  | Try of try_rec
+  | Need_arg of db
+
+and rewrite_rec = { 
+  cst: term;          (* constant which the rule applies to *)
+  lhs: pattern list;  (* patterns = constant args in lhs of thm *)
+  npv: int;           (* number of distinct pat vars in lhs *)
+  rhs: db dterm;
+  thm: thm            (* thm we use for rewriting *)
+}
+
+and rewrite =
+    Rw of rewrite_rec;;
+
+let rec add_in_db = function
+  | (n, cst, act, End_db) ->
+      funpow n (fun a -> Need_arg a) (Try { hcst = cst; rws = act; tail = End_db })
+  | (0, cst, (Rewrite nrws as act), Try { hcst = hcst; rws = Rewrite rws as rw; tail = tail }) -> 
+    if cst = hcst then Try { hcst = hcst; rws = Rewrite (nrws @ rws); tail = tail }
+    else Try { hcst = hcst; rws = rw; tail = add_in_db (0, cst, act, tail) }
+  | (n, cst, act, Try { hcst = hcst; rws = rws; tail = tail }) ->
+    Try { hcst = hcst; rws = rws; tail = add_in_db(n, cst, act, tail) }
+  | (0, cst, act, db) ->
+    Try { hcst = cst; rws = act; tail = db }
+  | (n, cst, act, Need_arg tail) ->
+    Need_arg (add_in_db(n - 1, cst, act, tail));;
+
+let key_of (Rw {cst = cst; lhs = lhs}) =
+  let name, _ = dest_const cst in
+  (name, length lhs, cst);;
+
+let is_skip = function
+  | (_, Const {skip = Some n; args = args}) -> n <= List.length args
+  | _ -> false;;
+
+let partition_skip = function
+  | Some n, args ->
+    let len = List.length args in
+    if n <= len then
+      chop_list (len - n) args
+    else
+      ([], args)
+  | None, args -> ([], args);;
+
+(*---------------------------------------------------------------------------
+ * equation database
+ * We should try to factorize the rules (cf discrimination nets)
+ * Rules are packed according to their head constant, and then sorted
+ * according to the width of their lhs.
+ *---------------------------------------------------------------------------*)
 
