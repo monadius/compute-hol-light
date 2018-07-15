@@ -463,3 +463,82 @@ and match_solve bds pat arg =
       raise No_match
   | _ -> raise No_match;;
 
+(*---------------------------------------------------------------------------
+ * Try a sequence of rewrite rules. No attempt to factorize patterns!
+ *---------------------------------------------------------------------------*)
+
+type 'a rule_inst = {
+  rule: rewrite;
+  inst: (term * 'a fterm) option array * (hol_type * hol_type) list
+};;
+
+let try_rwn ibds lt =
+  let rec try_rec = function
+    | [] -> raise No_match
+    | (Rw {lhs = lhs; npv = npv} as rw) :: rwn ->
+      let env = Array.make npv None in
+      try { rule = rw; inst = match_list (env, ibds) lhs lt }
+      with No_match -> try_rec rwn
+  in
+  try_rec;;
+
+(*---------------------------------------------------------------------------
+ * Instantiating the rule according to the output of the matching.
+ *---------------------------------------------------------------------------*)
+
+let comb_ct cst arg =
+  match cst with
+  | { head = head; args = args; rws = Need_arg tail; skip = skip } ->
+    Const { head = head; args = arg :: args; rws = tail; skip = skip }
+  | { head = head; args = args; rws = End_db; skip = skip } ->
+    Const { head = head; args = arg :: args; rws = End_db; skip = skip }
+  | { rws = Try _ } ->
+    raise (Dead_code "comb_ct: yet rules to try");;
+
+let mk_clos (env, t) =
+  match t with
+  | Cst (hc, { contents = (db, b) }) -> Const {head = hc; args = []; rws = db; skip = b}
+  | Bv i -> List.nth env i
+  | Fv -> Neutr
+  | _ -> Clos {env = env; term = t};;
+
+(*---------------------------------------------------------------------------
+ * It is probably this code that can be improved the most
+ *---------------------------------------------------------------------------*)
+
+let inst_one_var (thm, lv) = function
+  | Some (tm, v) -> SPEC tm thm, v :: lv
+  | None -> raise (Dead_code "inst_rw");;
+
+let inst_rw (th, monitoring, {rule = Rw {thm = thm; rhs = rhs}; inst = (bds, tysub)}) =
+  let tirhs = inst_type_dterm (tysub, rhs) in
+  let tithm = INST_TYPE tysub thm in
+  let spec_thm, venv = Array.fold_left inst_one_var (tithm, []) bds in
+  let () = if monitoring then print_term (concl spec_thm) in
+  trans_thm th spec_thm, mk_clos (venv, tirhs);;
+
+let monitoring = ref (None: (term -> bool) option);;
+let stoppers = ref (None: (term -> bool) option);;
+
+(*---------------------------------------------------------------------------
+ * Reducing a constant
+ *---------------------------------------------------------------------------*)
+
+let rec reduce_cst = function
+  | th, {head = head; args = args; rws = Try {hcst = hcst; rws = Rewrite rls; tail = tail}; skip = skip} ->
+   (try
+      let () = match !stoppers with None -> () | Some p -> if p head then raise No_match else () in
+      let _, _, tytheta = try term_match [] hcst head with _ -> raise No_match in
+      let rule_inst = try_rwn tytheta args rls in
+      let mon = match !monitoring with None -> false | Some f -> f head in
+      let insted = inst_rw (th, mon, rule_inst) in
+        (true, insted)
+    with No_match ->
+      reduce_cst (th, {head = head; args = args; rws = tail; skip = skip}))
+  | th, {head = head; args = args; rws = Try {hcst = hcst; rws = Conv fconv; tail = tail}; skip = skip} ->
+   (try
+      let thm, ft = fconv (rhs_concl th) in
+        (true, (trans_thm th thm, ft))
+    with _ ->
+      reduce_cst (th, {head = head; args = args; rws = tail; skip = skip}))
+  | th, cst -> (false, (th, Const cst));;
