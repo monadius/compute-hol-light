@@ -258,3 +258,144 @@ let partition_skip = function
  * according to the width of their lhs.
  *---------------------------------------------------------------------------*)
 
+type comp_rws = 
+    Rws of (string, (db * int option) ref) Hashtbl.t;;
+
+let empty_rws () = Rws (Hashtbl.create 100);;
+
+let assoc_clause (Rws rws) cst =
+  try Hashtbl.find rws cst
+  with Not_found ->
+    let mt = ref (End_db, None) in
+    Hashtbl.add rws cst mt;
+    mt;;
+
+let add_in_db_upd rws (name, arity, hcst) act =
+  let { contents = db, sk } as rl = assoc_clause rws name in
+  rl := add_in_db (arity, hcst, act, db), sk;;
+
+let set_skip (Rws htbl as rws) p sk =
+  let { contents = db, _ } as rl = assoc_clause rws p in
+  rl := db, sk;;
+
+let scrub_const (Rws htbl) c =
+  let name, _ = dest_const c in
+  Hashtbl.remove htbl name;;
+
+let from_term (rws, env, t) =
+  let rec down (env, t, c) =
+    match t with
+    | Var _ -> up ((try Bv (index t env) with _ -> Fv), c)
+    | Const (name, _) -> up (Cst (t, assoc_clause rws name), c)
+    | Comb (rator, rand) -> down (env, rator, Zrator ((env, rand), c))
+    | Abs (bvar, body) -> down (bvar :: env, body, Zabs ((), c))
+  
+  and up = function
+    | dt, Ztop -> dt
+    | dt, Zrator ((env, arg), c) -> down (env, arg, Zrand(dt, c))
+    | dt, Zrand (dr, c) -> up (appl (dr, dt), c)
+    | dt, Zabs (_, c) -> up (Abs dt, c)
+  in
+  down (env, t, Ztop);;
+
+(*---------------------------------------------------------------------------
+ * Note: if the list of free variables of the lhs was empty, we could
+ * evaluate (weak reduction) the rhs now. This implies that the
+ * theorems must be added in dependencies order.
+ *---------------------------------------------------------------------------*)
+
+let mk_rewrite rws eq_thm =
+  let lhs, rhs = dest_eq (concl eq_thm) in
+  let fv, cst, pats = check_arg_form lhs in
+  let gen_thm = itlist GEN fv eq_thm in
+  let rhsc = from_term (rws, rev fv, rhs) in
+  Rw {
+    cst = cst;
+    lhs = pats;
+    rhs = rhsc;
+    npv = length fv;
+    thm = gen_thm
+  };;
+
+let unsuitable th =
+  let l, r = dest_eq (concl th) in
+  can (term_match [] l) r;;
+
+let enter_thm rws thm0 =
+  let thm = eq_intro thm0 in
+  if unsuitable thm then ()
+  else
+    let rw = mk_rewrite rws thm in
+    add_in_db_upd rws (key_of rw) (Rewrite [rw]);;
+
+let add_thms lthm rws =
+  List.iter (List.iter (enter_thm rws) o BODY_CONJUNCTS) lthm;;
+
+let add_extern (cst, arity, fconv) rws =
+  let name, _ = dest_const cst in
+  add_in_db_upd rws (name, arity, cst) (Conv fconv);;
+
+let new_rws () =
+  let rws = empty_rws () in
+  add_thms [REFL_CLAUSE] rws;
+  rws;;
+
+let from_list lthm =
+  let rws = new_rws() in
+  add_thms lthm rws;
+  rws;;
+
+let scrub_thms lthm rws =
+  let tmlist = map (concl o hd o BODY_CONJUNCTS) lthm in
+  let clist = map (fst o strip_comb o lhs o snd o strip_forall) tmlist in
+  List.iter (scrub_const rws) clist;;
+
+
+(*---------------------------------------------------------------------------*)
+(* Support for analysis of compsets                                          *)
+(*---------------------------------------------------------------------------*)
+
+let rws_of (Rws htbl) =
+  let dblist = Hashtbl.fold (fun _ {contents = (db, _)} r -> db :: r) htbl [] in
+  let rec get_actions db =
+    match db with
+    | End_db -> []
+    | Need_arg db' -> get_actions db'
+    | Try {hcst = hcst; rws = rws; tail = tail} ->
+      (hcst, rws) :: get_actions tail in
+  let actionlist = List.concat (List.map get_actions dblist) in
+  let dest (Rw {thm = thm}) = thm in
+  let dest_action = function
+    | hcst, Rewrite rws -> (hcst, map dest rws)
+    | hcst, Conv _ -> (hcst, []) in
+  let rwlist = List.map dest_action actionlist in
+  rwlist;;
+
+type transform =
+    Conversion of (term -> thm * db fterm)
+  | Rrules of thm list;;
+
+(*---------------------------------------------------------------------------*)
+(* Compute the "attachments" for each element of the compset. Fortunately,   *)
+(* it seems that the insertion of an attachment into a compset also makes    *)
+(* insertions for the constants mentioned in the rhs of the rewrite.         *)
+(* Otherwise, one would have to do a transitive closure sort of construction *)
+(* to make all the dependencies explicit.                                    *)
+(*---------------------------------------------------------------------------*)
+
+let deplist (Rws htbl) =
+  let dblist = Hashtbl.fold (fun s {contents = (db, _)} r -> (s, db) :: r) htbl [] in
+  let rec get_actions db =
+    match db with
+    | End_db -> []
+    | Need_arg db' -> get_actions db'
+    | Try {hcst = hcst; rws = rws; tail = tail} ->
+      rws :: get_actions tail in
+  let actionlist = List.map (fun (s, db) -> s, get_actions db) dblist in
+  let dest (Rw {thm = thm}) = thm in
+  let dest_action = function
+    | Rewrite rws -> Rrules (map dest rws)
+    | Conv ecnv -> Conversion ecnv in
+  let rwlist = List.map (fun (s, act) -> s, map dest_action act) actionlist in
+  rwlist;;
+
