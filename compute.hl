@@ -399,3 +399,67 @@ let deplist (Rws htbl) =
   let rwlist = List.map (fun (s, act) -> s, map dest_action act) actionlist in
   rwlist;;
 
+
+(*** equations.sml ***)
+
+(*---------------------------------------------------------------------------
+ * The First order matching functions.
+ *
+ * We do not consider general non-linear patterns. We could try (requires a
+ * more elaborate conversion algorithm, and it makes matching and reduction
+ * mutually dependent).
+ *---------------------------------------------------------------------------*)
+exception No_match;;
+
+let raw_match = term_match [];;
+
+(* TODO: raw_match *)
+let match_const (bds, tbds) pc c =
+  let name, ty = dest_const pc in
+  let name', ty' = dest_const c in
+  if name = name' then
+    try bds, type_match ty ty' tbds with _ -> raise No_match
+  else raise No_match;;
+
+let match_const (bds, tbds) pc c =
+  try (bds, match raw_match pc c with _, _, ty -> ty)
+  with _ -> raise No_match;;
+
+
+(*---------------------------------------------------------------------------
+ * Match pattern variable number var with term arg.
+ * We do not need to match types, because pattern variables appear as argument
+ * of a constant which has already been matched succesfully.
+ *---------------------------------------------------------------------------*)
+
+let match_var (bds, tbds) var arg =
+  let _ = match bds.(var) with
+  | Some (tm, _) -> if aconv tm (fst arg) then () else raise No_match
+  | None -> bds.(var) <- Some arg in
+  (bds, tbds);;
+
+(*---------------------------------------------------------------------------
+ * Tries to match a list of pattern to a list of arguments.
+ * We assume that we already checked the lengths (probably a good short-cut)
+ *
+ * Returns a list of bindings that extend the ones given as
+ * argument (bds), or a No_match exception.
+ *---------------------------------------------------------------------------*)
+
+let rec match_list bds pats args =
+  match (pats, args) with
+    | pat :: pats, arg :: args ->
+      match_list (match_solve bds pat arg) pats args
+    | [], [] -> bds
+    | _ -> raise (Dead_code "match_list")
+
+and match_solve bds pat arg =
+  match (pat, arg) with
+  | Pvar var, arg -> match_var bds var arg
+  | Papp (phead, pargs), (_, Const {head = head; args = args}) ->
+    if length pargs = length args then
+      match_list (match_const bds phead head) pargs args
+    else
+      raise No_match
+  | _ -> raise No_match;;
+
