@@ -47,11 +47,11 @@ let try_eta thm = try RIGHT_ETA thm with _ -> thm;;
  * where   <fun> =  (|- a = a' , |- b = b') |-> |- M = (a' b')
  *---------------------------------------------------------------------------*)
 
-let push_in_stk f (arg, (th, stk)) =
+let push_in_stk f arg (th, stk) =
   let (tha, thb, mka) = MK_comb th in
   (tha, Zrator ((mka, (thb, f arg)), stk));;
 
-let push_skip_stk f (arg, (th, stk)) =
+let push_skip_stk f arg (th, stk) =
   let (tha, thb, mka) = MK_comb th in
   (tha, Zrand ((C mka, true, (thb, f arg)), stk));;
 
@@ -242,14 +242,15 @@ let is_skip = function
   | (_, Const {skip = Some n; args = args}) -> n <= List.length args
   | _ -> false;;
 
-let partition_skip = function
-  | Some n, args ->
+let partition_skip skip args =
+  match skip with
+  | Some n ->
     let len = List.length args in
     if n <= len then
       chop_list (len - n) args
     else
       ([], args)
-  | None, args -> ([], args);;
+  | None -> ([], args);;
 
 (*---------------------------------------------------------------------------
  * equation database
@@ -542,3 +543,128 @@ let rec reduce_cst = function
     with _ ->
       reduce_cst (th, {head = head; args = args; rws = tail; skip = skip}))
   | th, cst -> (false, (th, Const cst));;
+
+
+(*** computeLib.sml ***)
+
+let auto_import_definitions = ref true;;
+
+(* re-exporting types from clauses *)
+
+type compset = comp_rws;;
+let new_compset = from_list;;
+let listItems = deplist;;
+
+type cbv_stack =
+  ((thm->thm->thm) * (thm * db fterm),
+   (thm->thm->thm) * bool * (thm * db fterm),
+   (thm->thm)) stack;;
+
+let rec stack_out = function
+  | th, Ztop -> th
+  | th, Zrator ((mka, (thb, _)), ctx) -> stack_out (mka th thb, ctx)
+  | th, Zrand ((mka, _, (tha, _)), ctx) -> stack_out (mka tha th, ctx)
+  | th, Zabs (mkl, ctx) -> stack_out (mkl th, ctx);;
+
+let initial_state rws t =
+  ((refl_thm t, mk_clos ([], from_term (rws, [], t))), (Ztop: cbv_stack));;
+
+(*---------------------------------------------------------------------------
+ * [cbv_wk (rws,(th,cl),stk)] puts the closure cl (useful information about
+ * the rhs of th) in head normal form (weak reduction). It returns either
+ * a closure which term is an abstraction, in a context other than Zappl,
+ * a variable applied to strongly reduced arguments, or a constant
+ * applied to weakly reduced arguments which does not match any rewriting
+ * rule.
+ *
+ * - substitution is propagated through applications.
+ * - if the rhs is an abstraction and there is one arg on the stack,
+ *   this means we found a beta redex. mka rebuilds the application of
+ *   the function to its argument, and Beta does the actual beta step.
+ * - for an applied constant, we look for a rewrite matching it.
+ *   If we found one, then we apply the instantiated rule, and go on.
+ *   Otherwise, we try to rebuild the thm.
+ * - for an already strongly normalized term or an unapplied abstraction,
+ *   we try to rebuild the thm.
+ *---------------------------------------------------------------------------*)
+;;
+let rec cbv_wk = function
+  | (th, Clos {env = env; term = App (a, args)}), stk ->
+    let tha, stka = itlist (push_in_stk (curry mk_clos env)) args (th, stk) in
+    cbv_wk ((tha, mk_clos (env, a)), stka)
+  | (th, Clos {env = env; term = Abs body}), Zrator ((mka, (thb, cl)), s') ->
+    cbv_wk ((beta_thm (mka th thb), mk_clos (cl :: env, body)), s')
+  | (th, Const cargs), stk ->
+    let reduced, clos = reduce_cst (th, cargs) in
+    if reduced then cbv_wk (clos, stk) else cbv_up (clos, stk)
+  | clos, stk -> cbv_up (clos, stk)
+
+(*---------------------------------------------------------------------------
+ * Tries to rebuild the thm, knowing that the closure has been weakly
+ * normalized, until it finds term still to reduce, or if a strong reduction
+ * may be required.
+ *  - if we are done with a Rator, we start reducing the Rand
+ *  - if we are done with the Rand of a const, we rebuild the application
+ *    and look if it created a redex
+ *  - an application to a NEUTR can be rebuilt only if the argument has been
+ *    strongly reduced, which we now for sure only if itself is a NEUTR.
+ *---------------------------------------------------------------------------*)
+
+and cbv_up = function
+  | hcl, Zrator ((mka, clos), ctx) ->
+    let new_state = clos, Zrand ((mka, false, hcl), ctx) in
+    if is_skip hcl then cbv_up new_state else cbv_wk new_state
+  | (thb, v), Zrand ((mka, false, (th, Const cargs)), stk) ->
+    cbv_wk ((mka th thb, comb_ct cargs (rhs_concl thb, v)), stk)
+  | (thb, Neutr), Zrand ((mka, false, (th, Neutr)), stk) ->
+    cbv_up ((mka th thb, Neutr), stk)
+  | clos, stk -> clos, stk;;
+
+(*---------------------------------------------------------------------------
+ * [strong] continues the reduction of a term in head normal form under
+ * abstractions, and in the arguments of non reduced constant.
+ * precondition: the closure should be the output of cbv_wk
+ *---------------------------------------------------------------------------*)
+
+let rec strong = function
+  | (th, Clos {env = env; term = Abs t}), stk ->
+    let thb, stk' = push_lam_in_stk (th, stk) in
+    strong (cbv_wk ((thb, mk_clos (Neutr :: env, t)), stk'))
+  | (_, Clos _), stk ->
+    raise (Dead_code "strong")
+  | (th, Const {skip = skip; args = args}), stk ->
+    let argssk, argsrd = partition_skip skip args in
+    let th', stk' = itlist (push_skip_stk snd) argssk (th, stk) in
+    let th'', stk'' = itlist (push_in_stk snd) argsrd (th', stk') in
+    strong_up (th'', stk'')
+  | (th, Neutr), stk -> strong_up (th, stk)
+
+and strong_up = function
+  | th, Ztop -> th
+  | th, Zrand ((mka, false, (tha, Neutr)), ctx) ->
+    strong (cbv_wk ((mka tha th, Neutr), ctx))
+  | th, Zrand ((mka, false, clos), ctx) ->
+    raise (Dead_code "strong_up")
+  | th, Zrator ((mka, clos), ctx) ->
+    strong (cbv_wk (clos, Zrand ((mka, true, (th, Neutr)), ctx)))
+  | th, Zrand ((mka, true, (tha, _)), ctx) ->
+    strong_up (mka tha th, ctx)
+  | th, Zabs (mkl, ctx) ->
+    strong_up (mkl th, ctx);;
+
+
+
+
+let rewrites = from_list [ARITH_SUC];;
+
+cbv_wk (initial_state rewrites `(\n m. SUC n) 0`);;
+
+let print_db fmt (db : db) =
+  match db with
+  | End_db -> Format.fprintf fmt "End_db"
+  | Need_arg _ -> Format.fprintf fmt "Need_arg ..."
+  | Try _ -> Format.fprintf fmt "Try {...}";;
+
+#install_printer print_db;;
+
+#remove_printer print_db;;
