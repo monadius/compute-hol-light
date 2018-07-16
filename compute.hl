@@ -1,3 +1,9 @@
+let with_flag (flag, b) f x =
+  let fval = !flag in
+  let () = flag := b in
+  let res = try f x with e -> (flag := fval; raise e) in
+  flag := fval; res;;
+
 let RIGHT_BETA th =
   try TRANS th (BETA_CONV (rhs (concl th)))
   with _ -> failwith "RIGHT_BETA";;
@@ -71,7 +77,7 @@ let push_lam_in_stk (th, stk) =
 let FUNIFY thm =
   try 
     let x = rand (lhs (concl thm)) in
-    CONV_RULE (RATOR_CONV (RAND_CONV (REWR_CONV ETA_AX))) (ABS x thm)
+    CONV_RULE (RATOR_CONV (RAND_CONV (CHANGED_CONV (PURE_REWRITE_CONV[ETA_AX])))) (ABS x thm)
   with _ -> failwith "FUNIFY";;
 
 let UNFUNIFY thm =
@@ -93,7 +99,6 @@ let eq_intro thm =
   if is_eq (concl thm) then thm else
   if is_neg (concl thm) then EQF_INTRO thm
   else EQT_INTRO thm;;
-
 
 (*** clauses.sml ***)
 
@@ -652,19 +657,81 @@ and strong_up = function
   | th, Zabs (mkl, ctx) ->
     strong_up (mkl th, ctx);;
 
+(*---------------------------------------------------------------------------
+ * [CBV_CONV rws t] is a conversion that does the full normalization of t,
+ * using rewrites rws.
+ *---------------------------------------------------------------------------*)
+
+let CBV_CONV rws = evaluate o strong o cbv_wk o initial_state rws;;
+
+(*---------------------------------------------------------------------------
+ * WEAK_CBV_CONV is the same as CBV_CONV except that it does not reduce
+ * under abstractions, and reduce weakly the arguments of constants.
+ * Reduction whenever we reach a state where a strong reduction is needed.
+ *---------------------------------------------------------------------------*)
+
+let WEAK_CBV_CONV rws =
+  evaluate
+  o (fun ((th, _), stk) -> stack_out (th, stk))
+  o cbv_wk
+  o initial_state rws;;
+
+(*---------------------------------------------------------------------------
+ * Adding an arbitrary conv
+ *---------------------------------------------------------------------------*)
+
+let extern_of_conv rws conv tm =
+  let thm = conv tm in
+  thm, mk_clos ([], from_term (rws, [], rhs (concl thm)));;
+
+let add_conv (cst, arity, conv) rws =
+  add_extern (cst, arity, extern_of_conv rws conv) rws;;
+
+let set_skip2 compset c opt =
+  try
+    let name, _ = dest_const c in
+    set_skip compset name opt
+  with _ -> failwith "set_skip";;
 
 
+(*---------------------------------------------------------------------------
+       Support for a global compset.
+ ---------------------------------------------------------------------------*)
 
-let rewrites = from_list [ARITH_SUC];;
+let bool_redns =
+  strictify_thm LET_DEF
+  :: List.map lazyfy_thm
+    [COND_CLAUSES; COND_ID; NOT_CLAUSES;
+     AND_CLAUSES; OR_CLAUSES; IMP_CLAUSES; EQ_CLAUSES];;
 
-cbv_wk (initial_state rewrites `(\n m. SUC n) 0`);;
+let bool_compset () =
+  let base = from_list bool_redns in
+  let () = set_skip2 base `COND: bool -> A -> A -> A` None in
+          (* change last parameter to SOME 1 to stop CBV_CONV looking at
+             conditionals' branches before the guard is fully true or false *)
+  base;;
 
-let print_db fmt (db : db) =
-  match db with
-  | End_db -> Format.fprintf fmt "End_db"
-  | Need_arg _ -> Format.fprintf fmt "Need_arg ..."
-  | Try _ -> Format.fprintf fmt "Try {...}";;
+let the_compset = bool_compset();;
 
-#install_printer print_db;;
+let add_funs = C add_thms the_compset;;
+let add_convs = List.iter (C add_conv the_compset);;
 
-#remove_printer print_db;;
+let del_consts = List.iter (scrub_const the_compset);;
+let del_funs = C scrub_thms the_compset;;
+
+let EVAL_CONV = CBV_CONV the_compset;;
+let EVAL_RULE = CONV_RULE EVAL_CONV;;
+let EVAL_TAC = CONV_TAC EVAL_CONV;;
+
+let same_const c1 c2 = fst (dest_const c1) = fst (dest_const c2);;
+
+let rec OR = function
+  | [] -> K false
+  | [x] -> same_const x
+  | h :: t -> fun x -> same_const h x || OR t x;;
+
+let RESTR_EVAL_CONV clist =
+  with_flag (stoppers, Some (OR clist)) EVAL_CONV;;
+
+let RESTR_EVAL_TAC = CONV_TAC o RESTR_EVAL_CONV;;
+let RESTR_EVAL_RULE = CONV_RULE o RESTR_EVAL_CONV;;
