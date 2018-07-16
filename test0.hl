@@ -1,0 +1,18 @@
+needs "compute.hl";;
+
+let print_db fmt (db : db) =
+  match db with
+  | End_db -> Format.fprintf fmt "End_db"
+  | Need_arg _ -> Format.fprintf fmt "Need_arg ..."
+  | Try _ -> Format.fprintf fmt "Try {...}";;
+
+#install_printer print_db;;
+
+#remove_printer print_db;;
+
+rws_of (bool_compset());;
+
+let rewrites = from_list [ARITH];;
+cbv_wk (initial_state rewrites `(\n m. SUC n) 0`);;
+
+
