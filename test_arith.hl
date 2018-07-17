@@ -1,0 +1,26 @@
+needs "compute.hl";;
+
+let rws =
+  let rws = bool_compset() in
+  add_thms [ARITH] rws; rws;;
+
+let norm q = time (CBV_CONV rws) q;;
+let norm0 q =
+  let _ = time (CBV_CONV rws) q in ();;
+
+let test conv t =
+  let th = norm t in
+  let th2 = time conv t in
+  th, th = th2;;
+
+(* norm = 0.008s;
+   conv = 0s      *)
+test NUM_ADD_CONV `12342409999343999142452358034978092341 + 34341979797994228503423532504`;;
+
+(* norm = 0.152s;
+   conv = 0.004s  *)
+test NUM_MULT_CONV `72573248583243235 * 353958353255329228`;;
+
+(* norm = 8.356s;
+   conv = 0.032s  *)
+test NUM_EXP_CONV `7 EXP 200`;;

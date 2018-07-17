@@ -1,0 +1,115 @@
+needs "compute.hl";;
+
+let le_nat_def = define
+  `le_nat 0 n = T
+/\ le_nat (SUC k) 0 = F
+/\ le_nat (SUC k) (SUC l) = le_nat k l`;;
+
+let append_def = define
+  `append [] l2 = l2
+/\ append (CONS x l1) l2 = CONS x (append l1 l2)`;;
+
+let double_def = define `double l = append l l`;;
+
+let triple_def = define `triple l = append l (append l l)`;;
+
+(* merge sort *)
+
+let merge_def = define
+  `(merge (CONS h1 t1) (CONS h2 t2) =
+    if le_nat h1 h2 then CONS h1 (merge t1 (CONS h2 t2))
+    else CONS h2 (merge (CONS h1 t1) t2))
+/\ merge [] l2 = l2
+/\ merge l1 [] = l1`;;
+
+let _ = define_type "arbin = Lf | Nd num arbin arbin";;
+
+let tree2list_def = define
+  `tree2list Lf = []
+/\ tree2list (Nd n a1 a2) = CONS n (merge (tree2list a1) (tree2list a2))`;;
+
+let insTree_def = define
+  `insTree Lf n = Nd n Lf Lf
+/\ insTree (Nd m a1 a2) n =
+    if le_nat n m then Nd n a2 (insTree a1 m)
+    else Nd m a2 (insTree a1 n)`;;
+
+let list2tree_def = define
+  `list2tree [] = Lf
+/\ list2tree (CONS n ns) = insTree (list2tree ns) n`;;
+
+let merge_sort_def = define
+  `merge_sort l = tree2list (list2tree l)`;;
+
+(* Example *)
+
+let n1 = `SUC 0`;;
+let n2 = mk_comb (`SUC`, n1);;
+let n3 = mk_comb (`SUC`, n2);;
+let n4 = mk_comb (`SUC`, n3);;
+
+let l0 = `[] : num list`;;
+
+let app_l4 l = 
+  end_itlist mk_cons [n2; `0`; n1; `0`; l];;
+
+let app_l20 l =
+  end_itlist mk_cons [n2; `0`; n1; `0`; n1; n3; n4;
+                      n1; `0`; n1; n3; `0`; n1; n3;
+                      n4; n2; `0`; n1; `0`; n1; l];;
+
+
+let l2_def = define (mk_eq (`L2 : num list`, mk_list ([n2; `0`], `:num`)));;
+let l4_def = define (mk_eq (`L4 : num list`, app_l4 l0));;
+let l8_def = define (mk_eq (`L8 : num list`, funpow 2 app_l4 l0));;
+let l12_def = define (mk_eq (`L12 : num list`, funpow 3 app_l4 l0));;
+let l16_def = define (mk_eq (`L16 : num list`, funpow 4 app_l4 l0));;
+let l20'_def = define (mk_eq (`L20' : num list`, funpow 5 app_l4 l0));;
+let l40'_def = define `L40' = double L20'`;;
+let l80'_def = define `L80' = double L40'`;;
+
+let l20_def    = define (mk_eq (`L20 : num list`, app_l20 l0));;
+let l40_def    = define `L40 = double L20`;;
+let l100_def   = define (mk_eq (`L100 : num list`, funpow 5 app_l20 l0));;
+let l200_def   = define `L200 = double L100`;;
+let l400_def   = define `L400 = double L200 `;;
+let l1200_def  = define `L1200 = triple L400 `;;
+let l2400_def  = define `L2400 = double L1200 `;;
+let l4800_def  = define `L4800 = double L2400 `;;
+let l9600_def  = define `L9600 = double L4800 `;;
+let l19200_def = define `L19200 = double L9600 `;;
+let l38400_def = define `L38400 = double L19200 `;;
+
+
+let sort_thms = [
+  le_nat_def; append_def; double_def; triple_def;
+  merge_def; tree2list_def; insTree_def; list2tree_def;
+  merge_sort_def;
+  l2_def; l4_def; l8_def; l12_def; l16_def;
+  l20'_def; l40'_def; l80'_def;
+  l20_def; l40_def; l100_def; l200_def; l400_def;
+  l1200_def; l2400_def; l4800_def; l9600_def;
+  l19200_def; l38400_def
+];;
+
+let rws = 
+  let rws = bool_compset() in
+  add_thms sort_thms rws; rws;;
+
+
+let norm q = time (CBV_CONV rws) q;;
+let norm0 q =
+  let _ = time (CBV_CONV rws) q in ();;
+let norm0_wk q =
+  let _ = time (WEAK_CBV_CONV rws) q in ();;
+
+(* 0.3s *)
+norm0 `merge_sort L100`;;
+(* 0.7s *)
+norm0 `merge_sort L200`;;
+(* 1.9s *)
+norm0 `merge_sort L400`;;
+(* 11.8s *)
+norm0 `merge_sort L1200`;;
+(* 41.3s *)
+norm0 `merge_sort L2400`;;
