@@ -15,4 +15,10 @@ rws_of (bool_compset());;
 let rewrites = from_list [ARITH];;
 cbv_wk (initial_state rewrites `(\n m. SUC n) 0`);;
 
+#trace cbv_wk;;
+#trace cbv_up;;
+#trace reduce_cst;;
+#trace inst_rw;;
+#untrace reduce_cst;;
+#untrace_all;;
 

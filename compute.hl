@@ -417,20 +417,12 @@ let deplist (Rws htbl) =
  *---------------------------------------------------------------------------*)
 exception No_match;;
 
-let raw_match = term_match [];;
-
-(* TODO: raw_match *)
 let match_const (bds, tbds) pc c =
   let name, ty = dest_const pc in
   let name', ty' = dest_const c in
   if name = name' then
     try bds, type_match ty ty' tbds with _ -> raise No_match
   else raise No_match;;
-
-let match_const (bds, tbds) pc c =
-  try (bds, match raw_match pc c with _, _, ty -> ty)
-  with _ -> raise No_match;;
-
 
 (*---------------------------------------------------------------------------
  * Match pattern variable number var with term arg.
@@ -592,10 +584,10 @@ let initial_state rws t =
  * - for an already strongly normalized term or an unapplied abstraction,
  *   we try to rebuild the thm.
  *---------------------------------------------------------------------------*)
-;;
+
 let rec cbv_wk = function
   | (th, Clos {env = env; term = App (a, args)}), stk ->
-    let tha, stka = itlist (push_in_stk (curry mk_clos env)) args (th, stk) in
+    let tha, stka = rev_itlist (push_in_stk (curry mk_clos env)) args (th, stk) in
     cbv_wk ((tha, mk_clos (env, a)), stka)
   | (th, Clos {env = env; term = Abs body}), Zrator ((mka, (thb, cl)), s') ->
     cbv_wk ((beta_thm (mka th thb), mk_clos (cl :: env, body)), s')
@@ -639,8 +631,8 @@ let rec strong = function
     raise (Dead_code "strong")
   | (th, Const {skip = skip; args = args}), stk ->
     let argssk, argsrd = partition_skip skip args in
-    let th', stk' = itlist (push_skip_stk snd) argssk (th, stk) in
-    let th'', stk'' = itlist (push_in_stk snd) argsrd (th', stk') in
+    let th', stk' = rev_itlist (push_skip_stk snd) argssk (th, stk) in
+    let th'', stk'' = rev_itlist (push_in_stk snd) argsrd (th', stk') in
     strong_up (th'', stk'')
   | (th, Neutr), stk -> strong_up (th, stk)
 
