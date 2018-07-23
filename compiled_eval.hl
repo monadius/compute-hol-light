@@ -1,0 +1,182 @@
+let rec BODY_CONJUNCTS th =
+  if is_forall (concl th) then
+    BODY_CONJUNCTS (SPEC_ALL th)
+  else if is_conj (concl th) then
+    BODY_CONJUNCTS (CONJUNCT1 th) @ BODY_CONJUNCTS (CONJUNCT2 th)
+  else [th];;
+
+type pattern = 
+    Pvar of int
+  | Papp of term * pattern list;;
+
+let check_arg_form tm =
+  let rec chk t stk free =
+    if is_comb t then
+      let rator, rand = dest_comb t in
+      let free', pat1 = chk rand [] free in
+      chk rator (pat1 :: stk) free'
+    else if is_var t then
+      if stk = [] then
+        let newi = List.length free in
+        try (free, Pvar (newi - index t free - 1))
+        with _ -> (t :: free, Pvar newi)
+      else 
+        failwith ("check_arg_form: " ^ fst (dest_var t) ^ " occurs as a variable on lhs")
+    else if is_const t then
+      (free, Papp (t, List.rev stk))
+    else
+      failwith ("check_arg_form: lambda abstraction not allowed on lhs") 
+  in
+  match chk tm [] [] with
+    | (fv, Papp (head, args)) -> (List.rev fv, head, args)
+    | _ -> failwith "check_arg_form: ill-formed lhs";;
+
+type rewrite_rec = {
+  args: pattern list;
+  fv: term list;
+  thm: thm;
+};;
+
+type db_rec = {
+  f_name: string;
+  const: term;
+  nargs: int;
+  mutable rewrites: rewrite_rec list;
+};;
+
+let entries db = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+
+let empty_db () = (Hashtbl.create 100 : (string, db_rec) Hashtbl.t);;
+
+let add_thm db eq_th =
+  let lhs, rhs = dest_eq (concl eq_th) in
+  let fv, cst, arg_pats = check_arg_form lhs in
+  let name, _ = dest_const cst in
+  let entry = 
+    try Hashtbl.find db name
+    with Not_found -> 
+      let e = {
+        f_name = "f_" ^ name;
+        const = cst;
+        nargs = List.length arg_pats;
+        rewrites = [];
+      } in
+      Hashtbl.add db name e; e in
+  if entry.nargs <> List.length arg_pats then
+    failwith (Format.sprintf "Incorrect number of arguments for '%s' in '%s'" 
+                             name (string_of_thm eq_th));
+  entry.rewrites <- { args = arg_pats; fv = fv; thm = eq_th } :: entry.rewrites;;
+
+let add_thms db ths =
+  List.iter (List.iter (add_thm db) o BODY_CONJUNCTS) ths;
+  db;;
+
+type expr =
+  | Match of expr * (expr * expr) list
+  | Tuple of expr list
+  | Let of string * string list * expr * expr option
+  | App of expr * expr
+  | Term of term
+  | String of string
+  | Raw of string;;
+
+let is_app = function App _ -> true | _ -> false;;
+
+let mk_app a b = App (a, b);;
+
+let mk_raw s = Raw s;;
+
+let mk_tuple = function
+  | [] -> Raw "()"
+  | [e] -> e
+  | es -> Tuple es;;
+
+let enum_names s n =
+  List.map (fun k -> s ^ string_of_int k) (1 -- n);;
+
+let compile_rhs db rw =
+  let rec compile tm =
+    match tm with
+    | Var (name, _) -> Raw name
+    | Const (name, _) ->
+      begin
+        try
+          let entry = Hashtbl.find db name in
+          Raw entry.f_name
+        with Not_found ->
+          Term tm
+      end
+    | Comb _ ->
+      let op, args = strip_comb tm in
+      let arg_es = List.map compile args in
+      let arg_names = enum_names "a" (List.length args) in
+      
+
+      begin
+        match op
+
+
+  let rhs = (snd o dest_eq o concl) rw.thm in
+
+
+let compile_case db case =
+  let rec compile_pat pat =
+    match pat with
+    | Pvar i -> Raw ((fst o dest_var o List.nth case.fv) i)
+    | Papp (c, ps) ->
+      let c_name, _ = dest_const c in
+      let cst = App (Raw "Const", Tuple [String c_name; Raw "_"]) in
+      List.fold_left (fun l r -> App (Raw "Comb", Tuple [l; r])) cst (List.map compile_pat ps)
+  in
+  let pat = mk_tuple (List.map compile_pat case.args) in
+  let body = String ((string_of_term o snd o dest_eq o concl) case.thm) in
+  pat, body;;
+
+let compile db rw =
+  let c_name, _ = dest_const rw.const in
+  let f_name = "f_" ^ c_name in
+  let arg_names = enum_names "tm" rw.nargs in
+  let err_pat = 
+    (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" c_name))) in
+  let top_e = Match (mk_tuple (List.map mk_raw arg_names), 
+                     List.map (compile_case db) rw.rewrites @ [err_pat]) in
+  Let (f_name, arg_names, top_e, None);;
+
+
+
+let rec print_expr fmt = function
+  | Raw s -> Format.fprintf fmt "%s" s
+  | String s -> Format.fprintf fmt "\"%s\"" s
+  | Term tm -> Format.fprintf fmt "`%s`" (string_of_term tm)
+  | Tuple es -> 
+    Format.fprintf fmt "(%a)" 
+      (Format.pp_print_list 
+        ~pp_sep:(fun fmt () -> Format.pp_print_string fmt ", ")
+        print_expr) es
+  | App (f, x) ->
+    let f1 = format_of_string (if is_app f then "(%a)" else "%a") in
+    let f2 = format_of_string (if is_app x then "(%a)" else "%a") in
+    Format.fprintf fmt (f1 ^^ f2) print_expr f print_expr x
+  | Let (name, arg_names, expr, None) ->
+    Format.fprintf fmt "@[<v 2>let rec %s %a =@,%a@]"
+      name (Format.pp_print_list Format.pp_print_string) arg_names 
+      print_expr expr
+  | Let (name, arg_names, expr, Some body) ->
+      Format.fprintf fmt "let %s %a = %a in@,%a"
+        name (Format.pp_print_list Format.pp_print_string) arg_names 
+        print_expr expr print_expr body
+  | Match (expr, cases) ->
+    Format.fprintf fmt "match %a with@,| %a@,"
+      print_expr expr
+      (Format.pp_print_list 
+        ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "| ")
+        (fun fmt (pat, body) -> 
+          Format.fprintf fmt "@[<hov>%a -> @,%a@]@,"
+            print_expr pat print_expr body)) cases;;
+
+
+let db = add_thms (empty_db ()) [ARITH_SUC];;
+entries db;;
+let r = entries db |> hd |> snd |> compile;;
+print_expr Format.std_formatter r;;
+
