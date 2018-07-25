@@ -19,6 +19,12 @@ cbv_wk (initial_state rewrites `(\n m. SUC n) 0`);;
 #trace cbv_up;;
 #trace reduce_cst;;
 #trace inst_rw;;
+#trace mk_clos;;
 #untrace reduce_cst;;
 #untrace_all;;
+
+let th = List.nth (BODY_CONJUNCTS ARITH_SUC) 1;;
+let rewrites = from_list [lazyfy_thm OR_CLAUSES];;
+let state = initial_state rewrites `F \/ (y = y)`;;
+cbv_wk state;;
 

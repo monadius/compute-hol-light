@@ -71,6 +71,58 @@ let add_thms db ths =
   List.iter (List.iter (add_thm db) o BODY_CONJUNCTS) ths;
   db;;
 
+type eval_tree =
+    Refl
+  | Basic_app of term * eval_tree list
+  | F_app of db_rec * eval_tree list
+  | Var_app of string * eval_tree list;;
+
+let is_eval_tree_refl = function
+  | Refl -> true
+  | _ -> false;;
+
+let eval_n_args = function
+  | Basic_app (_, l) | F_app (_, l) | Var_app (_, l) -> List.length l
+  | _ -> failwith "eval_n_args";;
+
+let build_eval_tree db =
+  let rec build tm =
+    match tm with
+    | Comb _ ->
+      let op, args = strip_comb tm in
+      let arg_trees = List.map build args in
+      if is_var op then
+        Var_app (fst (dest_var op), arg_trees)
+      else
+        let name, _ = dest_const op in
+        begin
+          try
+            let app = Hashtbl.find db name in
+            F_app (app, arg_trees)
+          with Not_found ->
+            Basic_app (tm, arg_trees)
+        end
+    | _ -> Refl
+  in
+  build;;
+
+let rec optimize_eval_tree = function
+  | Refl -> Refl
+  | F_app (op, args) ->
+    let trees = List.map optimize_eval_tree args in
+    F_app (op, trees)
+  | Var_app (name, args) ->
+    let trees = List.map optimize_eval_tree args in
+    Var_app (name, trees)
+  | Basic_app (tm, args) ->
+    let trees = List.map optimize_eval_tree args in
+    if forall is_eval_tree_refl trees then
+      Refl
+    else
+      Basic_app (tm, trees);;
+
+
+
 type expr =
   | Match of expr * (expr * expr) list
   | Tuple of expr list
@@ -95,28 +147,33 @@ let enum_names s n =
   List.map (fun k -> s ^ string_of_int k) (1 -- n);;
 
 let compile_rhs db rw =
-  let rec compile tm =
-    match tm with
-    | Var (name, _) -> Raw name
-    | Const (name, _) ->
-      begin
-        try
-          let entry = Hashtbl.find db name in
-          Raw entry.f_name
-        with Not_found ->
-          Term tm
-      end
-    | Comb _ ->
-      let op, args = strip_comb tm in
-      let arg_es = List.map compile args in
-      let arg_names = enum_names "a" (List.length args) in
-      
-
-      begin
-        match op
-
-
   let rhs = (snd o dest_eq o concl) rw.thm in
+  let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
+
+  let rec code name t =
+    match t with
+    | Refl -> App (Raw "REFL", Raw name)
+    | Basic_app (_, args) | F_app (_, args) | Var_app (_, args) -> 
+    begin
+      let n = List.length args in
+      let arg_names = enum_names "a" n in
+      let arg_code = map2 code arg_names args in
+      let arg_list = String.concat "; " arg_names in
+      let final = 
+        match t with
+        | Basic_app (tm, _) -> 
+          Raw (Format.sprintf "AP_LEFT op [%s]" arg_list)
+        | F_app (f, _) ->
+          Raw (Format.sprintf "F_LEFT %s [%s]" f.f_name arg_list)
+        | Var_app (v, _) ->
+          Raw (Format.sprintf "F_LEFT %s [%s]" v arg_list)
+        | _ -> failwith "t" in
+      let arg_eq =
+        itlist2 (fun a c body -> Let (a, [], c, Some body)) arg_names arg_code final in
+      Let ("op, a1", [], App (Raw "dest_comb", Raw name), Some arg_eq)
+    end
+  in
+  code "rhs" eval_tree;;
 
 
 let compile_case db case =
@@ -129,7 +186,7 @@ let compile_case db case =
       List.fold_left (fun l r -> App (Raw "Comb", Tuple [l; r])) cst (List.map compile_pat ps)
   in
   let pat = mk_tuple (List.map compile_pat case.args) in
-  let body = String ((string_of_term o snd o dest_eq o concl) case.thm) in
+  let body = compile_rhs db case in
   pat, body;;
 
 let compile db rw =
@@ -155,14 +212,14 @@ let rec print_expr fmt = function
         print_expr) es
   | App (f, x) ->
     let f1 = format_of_string (if is_app f then "(%a)" else "%a") in
-    let f2 = format_of_string (if is_app x then "(%a)" else "%a") in
+    let f2 = format_of_string (if is_app x then " (%a)" else " %a") in
     Format.fprintf fmt (f1 ^^ f2) print_expr f print_expr x
   | Let (name, arg_names, expr, None) ->
     Format.fprintf fmt "@[<v 2>let rec %s %a =@,%a@]"
       name (Format.pp_print_list Format.pp_print_string) arg_names 
       print_expr expr
   | Let (name, arg_names, expr, Some body) ->
-      Format.fprintf fmt "let %s %a = %a in@,%a"
+      Format.fprintf fmt "@[<v 2>let %s %a =@,%a in@]@ %a"
         name (Format.pp_print_list Format.pp_print_string) arg_names 
         print_expr expr print_expr body
   | Match (expr, cases) ->
@@ -171,12 +228,112 @@ let rec print_expr fmt = function
       (Format.pp_print_list 
         ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "| ")
         (fun fmt (pat, body) -> 
-          Format.fprintf fmt "@[<hov>%a -> @,%a@]@,"
+          Format.fprintf fmt "@[<v>%a -> @,%a@]@,"
             print_expr pat print_expr body)) cases;;
 
 
 let db = add_thms (empty_db ()) [ARITH_SUC];;
 entries db;;
-let r = entries db |> hd |> snd |> compile;;
+let r = entries db |> hd |> snd;;
+let c = compile_rhs db (hd (r.rewrites));;
+print_expr Format.std_formatter c;;
+
+let r = entries db |> hd |> snd |> compile db;;
 print_expr Format.std_formatter r;;
 
+
+
+let [th0; th1; th2; th3] = BODY_CONJUNCTS ARITH_SUC;;
+let n_var = `n:num`;;
+
+let AP_LEFT tm eq_ths =
+  List.fold_left (curry MK_COMB) (REFL tm) eq_ths;;
+
+let suc_tm = `SUC`;;
+
+let F_LEFT f eq_ths =
+  match eq_ths with
+  | [eq_th] ->
+    let rhs = rand (concl eq_th) in
+    let f_th = f rhs in
+    TRANS (AP_TERM suc_tm eq_th) f_th
+  | _ -> failwith "F_LEFT";;
+
+let rec f_SUC tm1 =
+  match tm1 with
+  | Comb (Const ("BIT1", _), n) ->
+    let th = INST [n, n_var] th3 in
+    let rhs = rand (concl th) in
+    let op, a1  =
+      dest_comb rhs in
+    let a1  =
+      let op, a1  =
+        dest_comb a1 in
+      let a1  =
+        REFL a1 in
+      F_LEFT f_SUC [a1] in
+    TRANS th (AP_LEFT op [a1])
+  | Comb (Const ("BIT0", _), n) ->
+    let th = INST [n, n_var] th2 in
+    let rhs = rand (concl th) in
+    TRANS th (REFL rhs)
+  | Const ("_0", _) ->
+    let th = th1 in
+    let rhs = rand (concl th) in
+    TRANS th (REFL rhs)
+  | Comb (Const ("NUMERAL", _), n) ->
+    let th = INST [n, n_var] th0 in
+    let rhs = rand (concl th) in
+    let op, a1  =
+      dest_comb rhs in
+    let a1  =
+      let op, a1  =
+        dest_comb a1 in
+      let a1  =
+        REFL a1 in
+      F_LEFT f_SUC [a1] in
+    TRANS th (AP_LEFT op [a1])
+  | _ ->
+    failwith "No match: SUC";;
+
+let rec f_SUC tm1 =
+  match tm1 with
+  | Comb (Const ("BIT1", _), n) ->
+    let th = INST [n, n_var] th3 in
+    let rhs = rand (concl th) in
+    let op, a1  =
+      dest_comb rhs in
+    let a1  =
+      let op, a1  =
+        dest_comb a1 in
+      f_SUC a1 in
+    TRANS th (AP_TERM op a1)
+  | Comb (Const ("BIT0", _), n) ->
+    INST [n, n_var] th2
+  | Const ("_0", _) -> 
+    th1
+  | Comb (Const ("NUMERAL", _), n) ->
+    let th = INST [n, n_var] th0 in
+    let rhs = rand (concl th) in
+    let op, a1  =
+      dest_comb rhs in
+    let a1  =
+      let op, a1  =
+        dest_comb a1 in
+      f_SUC a1 in
+    TRANS th (AP_TERM op a1)
+  | _ ->
+    failwith "No match: SUC";;
+
+#load "unix.cma";;
+
+let test f n a =
+  let start = Unix.gettimeofday() in
+  let r = f a in
+  for i = 1 to n do
+    ignore (f a)
+  done;
+  let finish = Unix.gettimeofday() in
+  r, finish -. start;;
+test f_SUC 10000 `259`;;
+test NUM_SUC_CONV 10000 `SUC 259`;;

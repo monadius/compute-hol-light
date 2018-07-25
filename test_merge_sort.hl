@@ -103,6 +103,7 @@ let norm0 q =
 let norm0_wk q =
   let _ = time (WEAK_CBV_CONV rws) q in ();;
 
+(*
 (* 0.3s *)
 norm0 `merge_sort L100`;;
 (* 0.7s *)
@@ -113,3 +114,4 @@ norm0 `merge_sort L400`;;
 norm0 `merge_sort L1200`;;
 (* 41.3s *)
 norm0 `merge_sort L2400`;;
+*)
