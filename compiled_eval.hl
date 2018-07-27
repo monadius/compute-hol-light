@@ -285,10 +285,10 @@ let compile_rhs db rw =
           let args' = map (fun (r, a) -> 
             if r then a else App (Raw "rand", App (Raw "concl", a))) arg_list in
           let app_expr = mk_app (Raw f.f_name, args') in
-          if forall fst arg_list then App (Raw "snd", app_expr)
+          if forall fst arg_list then app_expr
           else
-            let e1 = mk_let ("h_tm, f_eq", mk_app (Raw f.f_name, args')) in
-            let e2 = mk_comb "h_tm" arg_list in
+            let e1 = mk_let ("f_eq", mk_app (Raw f.f_name, args')) in
+            let e2 = mk_comb "op" arg_list in
             let e3 = mk_app (Raw "TRANS", [e2; Raw "f_eq"]) in
             append_let_body e1 e3
         | Var_app (v, _) ->
@@ -315,14 +315,14 @@ let compile_rhs db rw =
   let rhs = (snd o dest_eq o concl) rw.thm in
   let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
   if is_eval_tree_refl eval_tree then
-      mk_tuple [Raw "head_tm"; inst_expr]
+    inst_expr
   else
     let expr = code "rhs" eval_tree in
     chain_let [
       mk_let ("th", inst_expr);
       mk_let ("rhs", Raw "rand (concl th)");
       mk_let ("rhs_eq", expr);
-      mk_tuple [Raw "head_tm"; mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])]
+      mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
     ];;
 
 
@@ -359,8 +359,7 @@ let compile_prelude rw =
   let th_exprs = map get_thms names in
   let vars = map (fun r -> r.fv) rw.rewrites |> flat |> setify in
   let var_exprs = map get_var vars in
-  let head_tm = mk_let ("head_tm", Term rw.const) in
-  [head_tm] @ var_exprs @ th_exprs |> chain_let;;
+  var_exprs @ th_exprs |> chain_let;;
 
 
 let compile db rw =
@@ -415,6 +414,11 @@ let rec print_expr fmt = function
       print_expr expr
       (Format.pp_print_list 
         ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "| ")
-        (fun fmt (pat, body) -> 
-          Format.fprintf fmt "@[<v>%a ->@ %a@]@,"
+        (fun fmt (pat, body) ->
+          let f = format_of_string 
+            (if is_compound body then
+              "@[<v>%a ->@ %a@]@,"
+             else
+              "@[<hv>%a ->@ %a@]@,") in
+          Format.fprintf fmt f
             print_expr pat print_expr body)) cases;;
