@@ -1,5 +1,14 @@
 #load "str.cma";;
 
+let rec split_while p = function
+  | [] -> [], []
+  | (x :: xs) as l -> 
+    if p x then
+      let a, b = split_while p xs in
+      x :: a, b
+    else
+      [], l;;
+
 let rec BODY_CONJUNCTS th =
   if is_forall (concl th) then
     BODY_CONJUNCTS (SPEC_ALL th)
@@ -120,13 +129,13 @@ let add_thms db ths =
   db;;
 
 type eval_tree =
-    Refl
+    Refl of term
   | Basic_app of term * eval_tree list
   | F_app of db_rec * eval_tree list
   | Var_app of string * eval_tree list;;
 
 let is_eval_tree_refl = function
-  | Refl -> true
+  | Refl _ -> true
   | _ -> false;;
 
 let eval_n_args = function
@@ -148,14 +157,14 @@ let build_eval_tree db =
             let app = Hashtbl.find db name in
             F_app (app, arg_trees)
           with Not_found ->
-            Basic_app (tm, arg_trees)
+            Basic_app (op, arg_trees)
         end
-    | _ -> Refl
+    | _ -> Refl tm
   in
   build;;
 
 let rec optimize_eval_tree = function
-  | Refl -> Refl
+  | Refl _ as t -> t
   | F_app (op, args) ->
     let trees = List.map optimize_eval_tree args in
     F_app (op, trees)
@@ -163,13 +172,14 @@ let rec optimize_eval_tree = function
     let trees = List.map optimize_eval_tree args in
     Var_app (name, trees)
   | Basic_app (tm, args) ->
-    let trees = List.map optimize_eval_tree args in
-    if forall is_eval_tree_refl trees then
-      Refl
+    let args' = List.map optimize_eval_tree args in
+    let refls, rest = split_while is_eval_tree_refl args' in
+    let tm' = List.fold_left (curry mk_comb) tm
+      (List.map (function Refl t -> t | _ -> failwith "impossible") refls) in
+    if rest = [] then
+      Refl tm'
     else
-      Basic_app (tm, trees);;
-
-
+      Basic_app (tm', rest);;
 
 type expr =
   | Match of expr * (expr * expr) list
@@ -220,6 +230,12 @@ let enum_names s n =
   List.map (fun k -> s ^ string_of_int k) (1 -- n);;
 
 let compile_rhs db rw =
+  let mk_refl expr = App (Raw "REFL", expr) in
+  let mk_comb op_name args =
+    List.fold_left 
+      (fun eq (r, arg_eq) -> 
+        App (Raw "MK_COMB", mk_tuple [eq; if r then mk_refl arg_eq else arg_eq]))
+      (mk_refl (Raw op_name)) args in
   let dest_comb tm_name names =
     let rec dest prev names =
       match names with
@@ -230,46 +246,36 @@ let compile_rhs db rw =
     dest tm_name (List.rev names) in
   let rec code name t =
     match t with
-    | Refl -> App (Raw "REFL", Raw name)
+    | Refl _ -> mk_refl (Raw name)
     | Basic_app (_, args) | F_app (_, args) | Var_app (_, args) -> 
     begin
       let n = List.length args in
       let arg_names = enum_names "a" n in
       let arg_code = map2 code arg_names args in
-      let arg_list = map mk_raw arg_names in
+      let arg_list = map2 (fun a name -> is_eval_tree_refl a, mk_raw name) args arg_names in
       let final = 
         match t with
-        | Basic_app (tm, _) ->
-          List.fold_left 
-            (fun eq arg_eq -> App (Raw "MK_COMB", mk_tuple [eq; arg_eq]))
-            (App (App (Raw "AP_TERM", Raw "op"), hd arg_list))
-            (tl arg_list)
+        | Basic_app (tm, _) -> mk_comb "op" arg_list
         | F_app (f, _) ->
-          let args' = map (fun a -> App (Raw "rand", App (Raw "concl", a))) arg_list in
-          let e1 = mk_let ("h_tm, f_eq", mk_app (Raw f.f_name, args')) in
-          let e2 = 
-            List.fold_left 
-              (fun eq arg_eq -> App (Raw "MK_COMB", mk_tuple [eq; arg_eq]))
-              (mk_app (Raw "AP_TERM", [Raw "h_tm"; hd arg_list]))
-              (tl arg_list) in
-          let e3 = mk_app (Raw "TRANS", [e2; Raw "f_eq"]) in
-          append_let_body e1 e3
+          let args' = map (fun (r, a) -> 
+            if r then a else App (Raw "rand", App (Raw "concl", a))) arg_list in
+          let app_expr = mk_app (Raw f.f_name, args') in
+          if forall fst arg_list then App (Raw "snd", app_expr)
+          else
+            let e1 = mk_let ("h_tm, f_eq", mk_app (Raw f.f_name, args')) in
+            let e2 = mk_comb "h_tm" arg_list in
+            let e3 = mk_app (Raw "TRANS", [e2; Raw "f_eq"]) in
+            append_let_body e1 e3
         | Var_app (v, _) ->
           Raw (Format.sprintf "F_LEFT %s [%s]" v ""(*arg_list*))
         | _ -> failwith "t" in
       let arg_eq =
-        itlist2 (fun a c body -> Let (false, a, [], c, Some body)) arg_names arg_code final in
+        itlist2 (fun (name, (r, _)) expr body ->
+          if r then body else Let (false, name, [], expr, Some body))
+        (zip arg_names arg_list) arg_code final in
       chain_let (dest_comb name arg_names @ [arg_eq])
-      (* chain_let 
-        [mk_let ("op, a1", App (Raw "dest_comb", Raw name)]
-          List.map2 (fun name next -> 
-            mk_let (Format.sprintf "%s, %s" name next, App (Raw "dest_comb", Raw ) *)
-      (* Let (false, "op, a1", [], App (Raw "dest_comb", Raw name), Some arg_eq) *)
     end
   in
-  let rhs = (snd o dest_eq o concl) rw.thm in
-  let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
-  let expr = code "rhs" eval_tree in
   let inst = 
     List.map (fun tm -> 
       let name, _ = dest_var tm in
@@ -281,12 +287,18 @@ let compile_rhs db rw =
       let inst_str = Format.sprintf "[%s]" 
         (String.concat "; " (map (fun (a, b) -> a ^ ", " ^ b) inst)) in
       App (App (Raw "INST", Raw inst_str), Raw th_name) in
-  chain_let [
-    mk_let ("th", inst_expr);
-    mk_let ("rhs", Raw "rand (concl th)");
-    mk_let ("rhs_eq", expr);
-    mk_tuple [Raw "head_tm"; mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])]
-  ];;
+  let rhs = (snd o dest_eq o concl) rw.thm in
+  let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
+  if is_eval_tree_refl eval_tree then
+      mk_tuple [Raw "head_tm"; inst_expr]
+  else
+    let expr = code "rhs" eval_tree in
+    chain_let [
+      mk_let ("th", inst_expr);
+      mk_let ("rhs", Raw "rand (concl th)");
+      mk_let ("rhs_eq", expr);
+      mk_tuple [Raw "head_tm"; mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])]
+    ];;
 
 
 let compile_case db case =
@@ -396,7 +408,7 @@ let c = compile_rhs db (hd (r.rewrites));;
 print_expr Format.std_formatter c;;
 
 
-let r = entries db |> C List.nth 2 |> snd |> compile db;;
+let r = entries db |> C List.nth 1 |> snd |> compile db;;
 print_expr Format.std_formatter r;;
 
 
@@ -406,14 +418,18 @@ print_expr Format.std_formatter r;;
 let test f n a =
   let start = Unix.gettimeofday() in
   let r = f a in
-  for i = 1 to n do
+  for i = 2 to n do
     ignore (f a)
   done;
   let finish = Unix.gettimeofday() in
   r, finish -. start;;
+(* 0.277 *)
 test f_SUC 10000 `255`;;
+(* 0.084 *)
 test NUM_SUC_CONV 10000 `SUC 255`;;
 
 test (f_ADD `100`) 10000 `248294`;;
 test NUM_ADD_CONV 10000 `100 + 248294`;;
+
+
 
