@@ -287,7 +287,8 @@ let compile_eval_tree =
       | name :: names ->
         mk_let (Format.sprintf "op, %s" name, App (Raw "dest_comb", Raw prev)) ::
           dest "op" names in
-    dest tm_name (List.rev names) 
+    if names = [] then [mk_let ("op", Raw tm_name)]
+    else dest tm_name (List.rev names) 
   in
   let compile_cond name cond_expr then_expr else_expr =
     let type_expr = mk_let ("ty", App (Raw "type_of", Raw "then_tm")) in
