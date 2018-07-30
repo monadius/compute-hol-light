@@ -144,9 +144,13 @@ let add_thms db ths =
 
 type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
 
-type app_type = Basic_app of term | Const_app of db_rec | Var_app of string;;
+type app_type = 
+    Basic_app of term 
+  | Const_app of db_rec 
+  | Var_app of string
+  | Abs_app of term * eval_tree
 
-type eval_tree =
+and eval_tree =
     Refl of term
   | Func_app of app_type * eval_tree list
   (* head, args, extra args (we only need to know their types) *)
@@ -166,7 +170,7 @@ let is_basic_app = function
   | _ -> false;;
 
 let build_eval_tree db =
-  let mk_app head args =
+  let rec mk_app head args =
     let app_type =
       match head with
       | Var (name, _) -> Var_app name
@@ -174,7 +178,10 @@ let build_eval_tree db =
           try Const_app (Hashtbl.find db name)
           with Not_found -> Basic_app head
         end
-      | _ -> failwith "mk_app: head should be a variable or a constant" in
+      | Abs _ -> 
+        let _, body = strip_abs head in
+        Abs_app (head, build body)
+      | _ -> failwith "mk_app: head should be a variable, a constant, or an abstraction" in
     match get_type head with
     | Tfun (l, _) ->
       let n = List.length l - List.length args in
@@ -184,8 +191,8 @@ let build_eval_tree db =
         Partial_app (app_type, args, tys)
       else
         Func_app (app_type, args)
-    | _ -> failwith "mk_app: head should be a function" in
-  let rec build tm =
+    | _ -> failwith "mk_app: head should be a function"
+  and build tm =
     match tm with
     | Comb _ ->
       let op, args = strip_comb tm in
@@ -212,11 +219,43 @@ let optimize_eval_tree =
     | Partial_app (Basic_app head, args, extra) ->
       let head', args' = split_args head (List.map optimize args) in
       Partial_app (Basic_app head', args', extra)
-    | Func_app (t, args) -> 
-      Func_app (t, List.map optimize args)
+    | Func_app (t, args) ->
+      let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
+      Func_app (t', List.map optimize args)
     | Partial_app (t, args, extra) ->
-      Partial_app (t, List.map optimize args, extra) in
+      let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
+      Partial_app (t', List.map optimize args, extra) in
   optimize;;
+
+let extract_abs name_index eval_tree =
+  let index = ref name_index in
+  let abstractions = ref [] in
+  let assoc_rewrite tm body =
+    try find (fun tm2, _ -> aconv tm tm2) !abstractions |> snd |> snd
+    with _ -> 
+      let rw = {
+        f_name = (incr index; Format.sprintf "abs_%d" !index);
+        const = tm;
+        nargs = List.length (fst (strip_abs tm));
+        rewrites = []
+      } in
+      abstractions := (tm, (body, rw)) :: !abstractions; rw in
+  let rec extract = function
+    | Func_app (Abs_app (tm, body), args) ->
+      let body' = extract body in
+      Func_app (Const_app (assoc_rewrite tm body'), map extract args)
+    | Partial_app (Abs_app (tm, body), args, extra) ->
+      let body' = extract body in
+      Partial_app (Const_app (assoc_rewrite tm body'), map extract args, extra)
+    | Func_app (t, args) -> Func_app (t, map extract args)
+    | Partial_app (t, args, extra) -> Partial_app (t, map extract args, extra)
+    | Refl _ as t -> t
+  in
+  let result = extract eval_tree in
+  result, List.rev !abstractions;;
+
+let t = build_eval_tree (empty_db()) `\x. x + (\y. 1) x` |> optimize_eval_tree;;
+extract_abs 0 t;;
 
 type expr =
   | Match of expr * (expr * expr) list
@@ -324,6 +363,7 @@ let compile_eval_tree =
       | Arg_function -> Raw arg_name in
     let final_expr = 
       match app_type with
+      | Abs_app _ -> failwith "compile_eval_tree: Abs_app is not allowed"
       | Basic_app _ -> mk_comb "op" full_arg_list
       | Const_app _ | Var_app _ ->
         let args' = map extract_arg full_arg_list in
@@ -430,7 +470,7 @@ let compile_prelude rw =
   var_exprs @ th_exprs |> chain_let;;
 
 
-let compile db rw =
+let compile_rule db rw =
   let c_name, _ = dest_const rw.const in
   let arg_names = enum_names "tm" rw.nargs in
   let err_pat = 
@@ -441,6 +481,10 @@ let compile db rw =
   let prelude = append_let_body (compile_prelude rw) top_e in
   Let (false, rw.f_name, [], prelude, None);;
 
+let compile_term db f_name tm =
+  let eval_tree = build_eval_tree db tm |> optimize_eval_tree in
+  let expr = compile_eval_tree "tm" eval_tree in
+  mk_let (f_name, mk_let ~body:(Some expr) ("tm", Term tm));;
 
 
 let rec print_expr fmt = function
