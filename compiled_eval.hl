@@ -1,5 +1,23 @@
 #load "str.cma";;
 
+(* A performance improvement trick from calc_num.ml *)
+let standardize, get_standardize_list, reset_standardize_cache =
+  let cache = Hashtbl.create 100 in
+  let find t = 
+    try Hashtbl.find cache t 
+    with Not_found -> Hashtbl.add cache t t; t in
+  let rec replace tm =
+    match tm with
+    | Var _ | Const _ -> find tm
+    | Comb (s, t) -> mk_comb (replace s, replace t)
+    | Abs (v, b) -> mk_abs (replace v, replace b) in
+  let st th =
+    let concl' = replace (concl th) in
+    EQ_MP (REFL concl') th in
+  let get () = Hashtbl.fold (fun _ t ts -> t :: ts) cache [] in
+  let reset () = Hashtbl.clear cache in
+    st, get, reset;;
+
 let rec split_while p = function
   | [] -> [], []
   | (x :: xs) as l -> 
@@ -22,7 +40,7 @@ let eq_intro thm =
   else EQT_INTRO thm;;
   
 let split_thm th =
-  List.map eq_intro (BODY_CONJUNCTS th);;
+  List.map (standardize o eq_intro) (BODY_CONJUNCTS th);;
 
 let fix_name, clear_fixes, add_fix_repl =
   let repls = ref [] in
@@ -253,9 +271,6 @@ let extract_abs name_index eval_tree =
   in
   let result = extract eval_tree in
   result, List.rev !abstractions;;
-
-let t = build_eval_tree (empty_db()) `\x. x + (\y. 1) x` |> optimize_eval_tree;;
-extract_abs 0 t;;
 
 type expr =
   | Match of expr * (expr * expr) list
@@ -515,7 +530,7 @@ let rec print_expr fmt = function
     let f = format_of_string 
       (if is_compound expr then
         "@[<v 2>let%s %s %s=@ %a in@]@ %a"
-      else
+       else
         "@[<hv 2>let%s %s %s=@ %a in@]@ %a") in
     Format.fprintf fmt f
         (if r then " rec" else "")
