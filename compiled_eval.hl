@@ -27,6 +27,9 @@ let rec split_while p = function
     else
       [], l;;
 
+let rec GEN_BETAS_CONV tm = 
+  (GEN_BETA_CONV ORELSEC (RATOR_CONV GEN_BETAS_CONV THENC GEN_BETA_CONV)) tm;;
+
 let rec BODY_CONJUNCTS th =
   if is_forall (concl th) then
     BODY_CONJUNCTS (SPEC_ALL th)
@@ -84,7 +87,7 @@ type pattern =
     Pvar of int
   | Papp of term * pattern list;;
 
-let check_arg_form tm =
+let check_arg_form, check_args_form =
   let rec chk t stk free =
     if is_comb t then
       let rator, rand = dest_comb t in
@@ -102,9 +105,17 @@ let check_arg_form tm =
     else
       failwith ("check_arg_form: lambda abstraction not allowed on lhs") 
   in
-  match chk tm [] [] with
-    | (fv, Papp (head, args)) -> (List.rev fv, head, args)
-    | _ -> failwith "check_arg_form: ill-formed lhs";;
+  let check_arg_form tm =
+    match chk tm [] [] with
+      | (fv, Papp (head, args)) -> (List.rev fv, head, args)
+      | _ -> failwith "check_arg_form: ill-formed lhs" in
+  let check_args_form tms =
+    let fv, args =
+      List.fold_right (fun arg (fv, args) ->
+        let fv', arg' = chk arg [] fv in
+        (fv', arg' :: args)) tms ([], []) in
+    List.rev fv, args in
+  check_arg_form, check_args_form;;
 
 
 type rewrite_rec = {
@@ -124,6 +135,10 @@ type db_rec = {
 };;
 
 let entries db = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+
+let get_entries db names =
+  let es = entries db in
+  map (fun name -> assoc name es) names;;
 
 let empty_db () = (Hashtbl.create 100 : (string, db_rec) Hashtbl.t);;
 
@@ -245,7 +260,7 @@ let optimize_eval_tree =
       Partial_app (t', List.map optimize args, extra) in
   optimize;;
 
-let extract_abs (name_index, init_abs) (th, th_name) eval_tree =
+let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
   let index = ref name_index in
   let abstractions = ref init_abs in
   let assoc_rewrite tm body =
@@ -257,7 +272,7 @@ let extract_abs (name_index, init_abs) (th, th_name) eval_tree =
         nargs = List.length (fst (strip_abs tm));
         rewrites = []
       } in
-      abstractions := (tm, (body, rw, th, th_name)) :: !abstractions; rw in
+      abstractions := (tm, (body, rw, base_tm, base_name)) :: !abstractions; rw in
   let rec extract = function
     | Func_app (Abs_app (tm, body), args) ->
       let body' = extract body in
@@ -276,6 +291,7 @@ type expr =
   | Match of expr * (expr * expr) list
   | Lambda of expr list * expr
   | Tuple of expr list
+  | List_expr of expr list
   | Let of bool * string * expr list * expr * expr option
   | If of expr * expr * expr
   | App of expr * expr
@@ -302,6 +318,8 @@ let mk_tuple = function
   | [] -> Raw "()"
   | [e] -> e
   | es -> Tuple es;;
+
+let mk_list exprs = List_expr exprs;;
 
 let mk_let ?(args = []) ?(body = None) (name, expr) =
   Let (false, name, args, expr, body);;
@@ -496,10 +514,20 @@ let compile_rules db rules =
     mk_let (var_name, 
       App (Raw "standardize_tm", 
         App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) in
-  let get_abs_expr (abs_tm, _, th, th_name) =
+  let get_tm_expr tm =
+    let ty = type_of tm in
+    App (Raw "parse_term", 
+      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in
+  let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
-    let path = find_path ((=) abs_tm) (concl th) in
-    let 
+    let path = find_path ((=) abs_tm) base_tm in
+    let eq_expr = App (Raw "standardize", App (Raw "GEN_BETAS_CONV", Raw "abs_tm")) in
+    let def_expr =
+      mk_let ~body:(Some eq_expr) ("abs_tm",
+        App (Raw "list_mk_comb", 
+          mk_tuple [mk_app (Raw "follow_path", [String path; App (Raw "concl", Raw base_name)]);
+                    mk_list (map get_tm_expr args)])) in
+    mk_let (abs_rw.f_name ^ "_th", def_expr) in
   let vars' = map (fun rule -> map (fun r -> r.fv) rule.rewrites |> flat) rules 
               |> flat |> setify in
   (* TODO: consider types if names coincide *)
@@ -508,7 +536,7 @@ let compile_rules db rules =
     let rhs = (snd o dest_eq o concl) rw.thm in
     let th_name = Format.sprintf "%s_case%d" rw.thm_name rw.thm_index in
     let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
-    let eval_tree, abs = extract_abs abs (rw.thm, th_name) eval_tree in
+    let eval_tree, abs = extract_abs abs (concl rw.thm, th_name) eval_tree in
     let case = {
       f_name = f_name;
       vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) rw.fv;
@@ -517,6 +545,15 @@ let compile_rules db rules =
       th_name = th_name;
     } in
     case, abs in
+  let get_abs_case (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
+    let args, _ = strip_gabs abs_tm in
+    let fv, pats = check_args_form args in {
+      f_name = abs_rw.f_name;
+      vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
+      rhs = abs_body;
+      args = map2 (fun pat arg -> pat, get_type arg) pats args;
+      th_name = abs_rw.f_name ^ "_th";
+    } in
   let all_cases abs (rule: db_rec) =
     List.fold_left (fun (abs, cases) rw ->
       let case, abs = get_case abs rule.f_name rw in
@@ -529,34 +566,19 @@ let compile_rules db rules =
       |> map (fun rw -> rw.thm_name)
       |> setify
       |> map get_th_expr in
-  let abs_exprs =
   let var_exprs = map get_var_expr vars in
-  chain_let (th_exprs @ var_exprs);;
+  let abs_th_exprs = map get_abs_expr (snd abs) in
+  let abs_exprs = map (fun abs ->
+    let abs_case = get_abs_case abs in
+    compile_function abs_case.f_name [abs_case]) (snd abs) in
+  let f_names = map fst fs in
+  let f_exprs = map (fun (f_name, cases) ->
+    compile_function f_name cases) fs in
+  let result_expr = mk_tuple (map mk_raw f_names) in
+  let main_expr = 
+    chain_let (th_exprs @ var_exprs @ abs_th_exprs @ abs_exprs @ f_exprs @ [result_expr]) in
+  mk_let (String.concat ", " f_names, main_expr);;
 
-compile_rules db (get_entries db ["SUC"; "+"; "lambda1"])
-    |> print_expr Format.std_formatter;;
-
-let compile_prelude rw =
-  let max_index name =
-    List.filter (fun r -> r.thm_name = name) rw.rewrites
-      |> List.fold_left (fun m r -> max m r.thm_index) 0 in
-  let get_thms name =
-    let n = max_index name in
-    let names = enum_names (name ^ "_case") n in
-    let pat_names = enum_names "th" n in
-    mk_let (String.concat ", " names,
-      Match (App (Raw "split_thm", Raw name),
-        [Raw ("[" ^ String.concat "; " pat_names ^ "]"), mk_tuple (List.map mk_raw pat_names);
-         Raw "_", Raw "failwith \"error\""])) in
-  let get_var tm =
-    let name, ty = dest_var tm in
-    let ty_str = Format.sprintf "`:%s`" (string_of_type ty) in
-    mk_let (name ^ "_var", App (Raw "mk_var", mk_tuple [String name; Raw ty_str])) in
-  let names = setify (map (fun r -> r.thm_name) rw.rewrites) in
-  let th_exprs = map get_thms names in
-  let vars = map (fun r -> r.fv) rw.rewrites |> flat |> setify in
-  let var_exprs = map get_var vars in
-  var_exprs @ th_exprs |> chain_let;;
 
 (*
 let compile_rule db rw =
@@ -587,6 +609,11 @@ let print_expr =
     Format.fprintf fmt "(%a)" 
       (Format.pp_print_list 
         ~pp_sep:(fun fmt () -> Format.pp_print_string fmt ", ")
+        print_expr) es
+  | List_expr es ->
+    Format.fprintf fmt "[%a]"
+      (Format.pp_print_list
+        ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "; ")
         print_expr) es
   | Lambda (args, body) ->
     Format.fprintf fmt "@[<v 2>fun %a ->@,%a@]"
