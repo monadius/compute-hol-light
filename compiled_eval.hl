@@ -675,20 +675,49 @@ let compile_rules db rules =
   mk_let (String.concat ", " f_names, main_expr);;
 
 
-(*
-let compile_rule db rw =
-  let c_name, _ = dest_const rw.const in
-  let arg_names = enum_names "tm" rw.nargs in
-  let err_pat = 
-    (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" c_name))) in
-  let match_e = Match (mk_tuple (List.map mk_raw arg_names), 
-                     List.map (compile_case db) rw.rewrites @ [err_pat]) in
-  let top_e = Let (true, rw.f_name, arg_names, match_e, Some (Raw rw.f_name)) in
-  let prelude = append_let_body (compile_prelude rw) top_e in
-  Let (false, rw.f_name, [], prelude, None);;
-
 let compile_term db f_name tm =
+  let get_var_expr (tm, var_name) =
+    let name, ty = dest_var tm in
+    let ty_str = Format.sprintf "`:%s`" (string_of_type ty) in
+    mk_let (var_name, 
+      App (Raw "standardize_tm", 
+        App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) in
+  let get_tm_expr tm =
+    let ty = type_of tm in
+    App (Raw "parse_term", 
+      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in
+  let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
+    let args, _ = strip_gabs abs_tm in
+    let path = find_path ((=) abs_tm) base_tm in
+    let eq_expr = App (Raw "standardize", App (Raw "GEN_BETAS_CONV", Raw "abs_tm")) in
+    let def_expr =
+      mk_let ~body:(Some eq_expr) ("abs_tm",
+        App (Raw "list_mk_comb", 
+          mk_tuple [mk_app (Raw "follow_path", [String path; Raw base_name]);
+                    mk_list (map get_tm_expr args)])) in
+    mk_let (abs_rw.f_name ^ "_th", def_expr) in
+  let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
+    let args, _ = strip_gabs abs_tm in
+    let fv, pats = check_args_form args in {
+      f_name = abs_rw.f_name;
+      vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
+      rhs = abs_body;
+      args = map2 (fun pat arg -> pat, get_type arg) pats args;
+      th_name = abs_rw.f_name ^ "_th";
+    } in
   let eval_tree = build_eval_tree db tm |> optimize_eval_tree in
+  let eval_tree, (_, abs) = extract_abs (0, []) (tm, "tm") eval_tree in
+  let vars' = map (fun tm, _ ->
+                    let args, _ = strip_gabs tm in
+                    flat (map frees args)) abs 
+      |> flat |> setify in
+  let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
+  let var_exprs = map get_var_expr vars in
+  let abs_th_exprs = map get_abs_expr abs in
+  let abs_exprs = map (fun abs ->
+    let abs_case = get_abs_case vars abs in
+    compile_function abs_case.f_name [abs_case]) abs in
+  let tm_expr = mk_let ("tm", Term tm) in
   let expr = compile_eval_tree "tm" eval_tree in
-  mk_let (f_name, mk_let ~body:(Some expr) ("tm", Term tm));;
-*)
+  mk_let (f_name,
+    chain_let (tm_expr :: abs_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
