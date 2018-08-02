@@ -206,14 +206,14 @@ let build_eval_tree db =
   let rec mk_app head args =
     let app_type =
       match head with
+      | _ when is_gabs head -> 
+        let _, body = strip_gabs head in
+        Abs_app (head, build body)
       | Var (name, _) -> Var_app name
       | Const (name, _) -> begin
           try Const_app (Hashtbl.find db name)
           with Not_found -> Basic_app head
         end
-      | Abs _ -> 
-        let _, body = strip_abs head in
-        Abs_app (head, build body)
       | _ -> failwith "mk_app: head should be a variable, a constant, or an abstraction" in
     match get_type head with
     | Tfun (l, _) ->
@@ -229,6 +229,10 @@ let build_eval_tree db =
     match tm with
     | Comb _ ->
       let op, args = strip_comb tm in
+      let op, args =
+        match (op, args) with
+        | Const ("GABS", _), h :: t -> mk_comb (op, h), t
+        | _ -> op, args in
       let arg_trees = List.map build args in
       mk_app op arg_trees
     | _ -> (try mk_app tm [] with Failure _ -> Refl tm)
@@ -269,7 +273,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
       let rw = {
         f_name = (incr index; Format.sprintf "abs_%d" !index);
         const = tm;
-        nargs = List.length (fst (strip_abs tm));
+        nargs = List.length (fst (strip_gabs tm));
         rewrites = []
       } in
       abstractions := (tm, (body, rw, base_tm, base_name)) :: !abstractions; rw in
@@ -545,7 +549,7 @@ let compile_rules db rules =
       th_name = th_name;
     } in
     case, abs in
-  let get_abs_case (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
+  let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let args, _ = strip_gabs abs_tm in
     let fv, pats = check_args_form args in {
       f_name = abs_rw.f_name;
@@ -561,6 +565,12 @@ let compile_rules db rules =
   let abs, fs = List.fold_left (fun (abs, fs) rule ->
     let abs, cases = all_cases abs rule in
     abs, (rule.f_name, cases) :: fs) ((0, []), []) rules in
+  (* Add free variables from abstractions *)
+  let vars' = vars' @ 
+    flat (map (fun tm, _ ->
+      let args, _ = strip_gabs tm in
+      flat (map frees args)) (snd abs)) |> setify in
+  let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
   let th_exprs =
     flat (map (fun rule -> rule.rewrites) rules)
       |> map (fun rw -> rw.thm_name)
@@ -569,7 +579,7 @@ let compile_rules db rules =
   let var_exprs = map get_var_expr vars in
   let abs_th_exprs = map get_abs_expr (snd abs) in
   let abs_exprs = map (fun abs ->
-    let abs_case = get_abs_case abs in
+    let abs_case = get_abs_case vars abs in
     compile_function abs_case.f_name [abs_case]) (snd abs) in
   let f_names = map fst fs in
   let f_exprs = map (fun (f_name, cases) ->
