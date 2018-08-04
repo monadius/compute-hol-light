@@ -27,6 +27,42 @@ let rec split_while p = function
     else
       [], l;;
 
+let dest_pattern =
+  let dest_geq = dest_binary "GEQ" in
+  let dest_simple_pattern tm =
+    let _, body = strip_abs tm |> snd |> strip_exists in
+    match strip_comb body with
+    | Const ("_UNGUARDED_PATTERN", _), [lhs; rhs] ->
+      fst (dest_geq lhs), None, fst (dest_geq rhs)
+    | Const ("_GUARDED_PATTERN", _), [lhs; guard; rhs] ->
+      fst (dest_geq lhs), Some guard, fst (dest_geq rhs)
+    | _ -> failwith ("dest_simple_pattern: " ^ string_of_term tm) in
+  let rec dest tm =
+    match tm with
+    | Comb (Comb (Const ("_SEQPATTERN", _), pat), rest) ->
+      dest_simple_pattern pat :: dest rest
+    | Abs _ -> [dest_simple_pattern tm]
+    | _ -> failwith ("dest_pattern: " ^ string_of_term tm) in
+  dest;;
+
+let dest_match tm =
+  match strip_comb tm with
+  | Const ("_MATCH", _), [arg; pat] -> Some arg, dest_pattern pat
+  | Const ("_FUNCTION", _), [pat] -> None, dest_pattern pat
+  | Const ("_FUNCTION", _), [pat; arg] -> Some arg, dest_pattern pat
+  | _ -> failwith "dest_match";;
+
+let eliminate_top_match th =
+  let tm = concl th in
+  let _, rhs = dest_eq tm in
+  match dest_match rhs with
+  | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
+    map (fun (p, _, _) -> 
+      let eq = REWRITE_CONV[] (subst[p, arg] tm) in
+      let th0 = INST[p, arg] th in
+      EQ_MP eq th0) pats
+  | _ -> failwith "eliminate_top_match";;
+
 let rec GEN_BETAS_CONV tm = 
   (GEN_BETA_CONV ORELSEC (RATOR_CONV GEN_BETAS_CONV THENC GEN_BETA_CONV)) tm;;
 
@@ -60,6 +96,9 @@ let fix_name, clear_fixes, add_fix_repl =
 let () =
   clear_fixes();
   List.iter (uncurry add_fix_repl) [
+    "/\\", "AND";
+    "\\/", "OR";
+    "==>", "IMP";
     "+", "ADD";
     "-", "SUB";
     "*", "MUL";
