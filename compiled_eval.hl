@@ -1,8 +1,9 @@
 #load "str.cma";;
 
 (* A performance improvement trick from calc_num.ml *)
-let standardize, standardize_tm, standardize_list, standardize_reset =
+let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =
   let cache = Hashtbl.create 100 in
+  let enabled = ref true in
   let find t = 
     try Hashtbl.find cache t 
     with Not_found -> Hashtbl.add cache t t; t in
@@ -16,7 +17,10 @@ let standardize, standardize_tm, standardize_list, standardize_reset =
     EQ_MP (REFL concl') th in
   let get () = Hashtbl.fold (fun _ t ts -> t :: ts) cache [] in
   let reset () = Hashtbl.clear cache in
-    st, replace, get, reset;;
+  let enable flag = enabled := flag in
+    (fun th -> if !enabled then st th else th), 
+    (fun tm -> if !enabled then replace tm else tm), 
+    get, reset, enable;;
 
 let rec split_while p = function
   | [] -> [], []
@@ -315,7 +319,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
         nargs = List.length (fst (strip_gabs tm));
         rewrites = []
       } in
-      abstractions := (tm, (body, rw, base_tm, base_name)) :: !abstractions; rw in
+      (abstractions := !abstractions @ [(tm, (body, rw, base_tm, base_name))]); rw in
   let rec extract = function
     | Func_app (Abs_app (tm, body), args) ->
       let body' = extract body in
@@ -328,7 +332,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
     | Refl _ as t -> t
   in
   let result = extract eval_tree in
-  result, (!index, List.rev !abstractions);;
+  result, (!index, !abstractions);;
 
 type expr =
   | Match of expr * (expr * expr) list
@@ -531,7 +535,7 @@ let compile_eval_tree =
         let f_name = 
           match app_type with 
           | Const_app f -> f.f_name 
-          | Var_app f -> f ^ "_func" 
+          | Var_app f -> "func_" ^ f 
           | _ -> failwith "impossible" in
         let app_expr = mk_app (Raw f_name, args') in
         if forall (fun (_, ty) -> ty = Arg_term || ty = Arg_function) full_arg_list then app_expr
@@ -554,7 +558,7 @@ let compile_eval_tree =
     | Partial_app (app_type, [], _) when not (is_basic_app t) ->
       let f_name = 
         (match app_type with
-        | Var_app name -> name ^ "_func"
+        | Var_app name -> "func_" ^ name
         | Const_app rw -> rw.f_name
         | _ -> failwith "Partial_app (Basic_app) is not allowed") in
       mk_tuple [Raw name; Raw f_name]
@@ -568,11 +572,17 @@ let compile_eval_tree =
   compile;;
 
 type case_info = {
-  f_name: string;
   vars: (term * string) list;
   rhs: eval_tree;
   args: (pattern * arg_type) list;
   th_name: string;
+};;
+
+type func_info = {
+  name: string;
+  arg_types: arg_type list;
+  poly_indices: int list;
+  cases: case_info list;
 };;
 
 let compile_rhs case =
@@ -595,11 +605,11 @@ let compile_rhs case =
       mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
     ];;
 
-let compile_function name cases =
+let compile_function func =
   let compile_case case =
     let var_name i = fst (dest_var (fst (List.nth case.vars i))) in
     let rec compile_pat = function
-      | Pvar i, Tfun (args, _) -> mk_tuple [Raw (var_name i); Raw (var_name i ^ "_func")]
+      | Pvar i, Tfun (args, _) -> mk_tuple [Raw (var_name i); Raw ("func_" ^ var_name i)]
       | Pvar i, _ -> Raw (var_name i)
       | Papp _, Tfun _ -> failwith "Patterns are not allowed for functions"
       | Papp (c, ps), ty ->
@@ -611,17 +621,17 @@ let compile_function name cases =
     let body = compile_rhs case in
     pats, body
   in
-  match List.map compile_case cases with
+  match List.map compile_case func.cases with
   | [] -> failwith "compile_function: no cases"
-  | [args, body] when forall (function (Pvar _, _) -> true | _ -> false) (hd cases).args ->
-    Let (true, name, args, body, None)
+  | [args, body] when forall (function (Pvar _, _) -> true | _ -> false) (hd func.cases).args ->
+    Let (true, func.name, args, body, None)
   | cs ->
-    let arg_names = enum_names "tm" (List.length (hd cases).args) in
+    let arg_names = enum_names "tm" (List.length (hd func.cases).args) in
     let err_pat = 
-      (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" name))) in
+      (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
     let cs' = List.map (fun (pats, body) -> mk_tuple pats, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
-    Let (true, name, List.map mk_raw arg_names, match_expr, None);;
+    Let (true, func.name, List.map mk_raw arg_names, match_expr, None);;
 
 let compile_rules db rules =
   let max_index name =
@@ -656,17 +666,18 @@ let compile_rules db rules =
           mk_tuple [mk_app (Raw "follow_path", [String path; App (Raw "concl", Raw base_name)]);
                     mk_list (map get_tm_expr args)])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) in
+  let name_vars vars =
+    (* TODO: consider types if names coincide *)
+    map (fun v -> v, "var_" ^ fst (dest_var v)) vars in
   let vars' = map (fun rule -> map (fun r -> r.fv) rule.rewrites |> flat) rules 
               |> flat |> setify in
-  (* TODO: consider types if names coincide *)
-  let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
-  let get_case abs f_name rw =
+  let vars = name_vars vars' in
+  let get_case abs rw =
     let rhs = (snd o dest_eq o concl) rw.thm in
     let th_name = Format.sprintf "%s_case%d" rw.thm_name rw.thm_index in
     let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
     let eval_tree, abs = extract_abs abs (concl rw.thm, th_name) eval_tree in
     let case = {
-      f_name = f_name;
       vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) rw.fv;
       rhs = eval_tree;
       args = zip rw.args rw.arg_types;
@@ -676,7 +687,6 @@ let compile_rules db rules =
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let args, _ = strip_gabs abs_tm in
     let fv, pats = check_args_form args in {
-      f_name = abs_rw.f_name;
       vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
       rhs = abs_body;
       args = map2 (fun pat arg -> pat, get_type arg) pats args;
@@ -684,17 +694,23 @@ let compile_rules db rules =
     } in
   let all_cases abs (rule: db_rec) =
     List.fold_left (fun (abs, cases) rw ->
-      let case, abs = get_case abs rule.f_name rw in
+      let case, abs = get_case abs rw in
       (abs, case :: cases)) (abs, []) rule.rewrites in
   let abs, fs = List.fold_left (fun (abs, fs) rule ->
     let abs, cases = all_cases abs rule in
-    abs, (rule.f_name, cases) :: fs) ((0, []), []) rules in
+    let f = {
+      name = rule.f_name;
+      arg_types = map snd (hd cases).args;
+      poly_indices = [];
+      cases = cases;
+    } in
+    abs, f :: fs) ((0, []), []) rules in
   (* Add free variables from abstractions *)
   let vars' = vars' @ 
     flat (map (fun tm, _ ->
       let args, _ = strip_gabs tm in
       flat (map frees args)) (snd abs)) |> setify in
-  let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
+  let vars = name_vars vars' in
   let th_exprs =
     flat (map (fun rule -> rule.rewrites) rules)
       |> map (fun rw -> rw.thm_name)
@@ -702,12 +718,17 @@ let compile_rules db rules =
       |> map get_th_expr in
   let var_exprs = map get_var_expr vars in
   let abs_th_exprs = map get_abs_expr (snd abs) in
-  let abs_exprs = map (fun abs ->
+  let abs_exprs = map (fun (_, (_, (abs_rw: db_rec), _, _)) as abs ->
     let abs_case = get_abs_case vars abs in
-    compile_function abs_case.f_name [abs_case]) (snd abs) in
-  let f_names = map fst fs in
-  let f_exprs = map (fun (f_name, cases) ->
-    compile_function f_name cases) fs in
+    let abs_f = {
+      name = abs_rw.f_name;
+      arg_types = map snd abs_case.args;
+      poly_indices = [];
+      cases = [abs_case];
+    } in
+    compile_function abs_f) (snd abs) in
+  let f_names = map (fun f -> f.name) fs in
+  let f_exprs = map compile_function fs in
   let result_expr = mk_tuple (map mk_raw f_names) in
   let main_expr = 
     chain_let (th_exprs @ var_exprs @ abs_th_exprs @ abs_exprs @ [mk_let_and f_exprs; result_expr]) in
@@ -738,7 +759,6 @@ let compile_term db f_name tm =
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let args, _ = strip_gabs abs_tm in
     let fv, pats = check_args_form args in {
-      f_name = abs_rw.f_name;
       vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
       rhs = abs_body;
       args = map2 (fun pat arg -> pat, get_type arg) pats args;
@@ -753,9 +773,15 @@ let compile_term db f_name tm =
   let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
   let var_exprs = map get_var_expr vars in
   let abs_th_exprs = map get_abs_expr abs in
-  let abs_exprs = map (fun abs ->
+  let abs_exprs = map (fun (_, (_, (abs_rw: db_rec), _, _)) as abs ->
     let abs_case = get_abs_case vars abs in
-    compile_function abs_case.f_name [abs_case]) abs in
+    let abs_f = {
+      name = abs_rw.f_name;
+      arg_types = map snd abs_case.args;
+      poly_indices = [];
+      cases = [abs_case];
+    } in
+    compile_function abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
   let expr = compile_eval_tree "tm" eval_tree in
   mk_let (f_name,
