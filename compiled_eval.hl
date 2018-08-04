@@ -126,6 +126,11 @@ let get_type =
   fun tm ->
     get (type_of tm);;
 
+let rec get_type_vars t =
+  match t with
+  | Ttype ty -> tyvars ty
+  | Tfun (args, r) -> end_itlist union (tyvars r :: map get_type_vars args);;
+
 type pattern = 
     Pvar of int
   | Papp of term * pattern list;;
@@ -369,6 +374,8 @@ let mk_tuple = function
 
 let mk_list exprs = List_expr exprs;;
 
+let mk_int_list ints = mk_list (List.map (fun i -> mk_raw (string_of_int i)) ints);;
+
 let mk_let_and ?(body = None) = function
   | [] -> failwith "mk_let_and: empty list"
   | exprs when forall is_let exprs -> Let_and (exprs, body)
@@ -582,35 +589,49 @@ type func_info = {
   name: string;
   arg_types: arg_type list;
   poly_indices: int list;
+  arg_ty_name: string;
   cases: case_info list;
 };;
 
-let compile_rhs case =
+let compile_rhs ty_inst case =
+  let var_exprs =
+    case.vars 
+    |> filter (fun (v, _) -> tyvars (type_of v) <> [])
+    |> map (fun (v, var_name) ->
+        let name, _ = dest_var v in
+        let args = mk_tuple [String name; App (Raw "type_of", Raw name)] in
+        mk_let (var_name, App (Raw "mk_var", args))) in
+  let type_inst =
+    match ty_inst with
+    | None -> Raw case.th_name
+    | Some expr ->
+      mk_app (Raw "INST_TYPE", [expr; Raw case.th_name]) in
   let inst =
     List.map (fun tm, var_name -> fst (dest_var tm), var_name) case.vars in
   let inst_expr =
-    if inst = [] then Raw case.th_name
+    if inst = [] then type_inst
     else
       let inst_str = Format.sprintf "[%s]" 
         (String.concat "; " (map (fun (a, b) -> a ^ ", " ^ b) inst)) in
-      App (App (Raw "INST", Raw inst_str), Raw case.th_name) in
+      mk_app (Raw "INST", [Raw inst_str; type_inst]) in
   if is_eval_tree_refl case.rhs then
-    inst_expr
+    chain_let (var_exprs @ [inst_expr])
   else
     let expr = compile_eval_tree "rhs" case.rhs in
-    chain_let [
+    chain_let (var_exprs @ [
       mk_let ("th", inst_expr);
       mk_let ("rhs", Raw "rand (concl th)");
       mk_let ("rhs_eq", expr);
       mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
-    ];;
+    ]);;
 
 let compile_function func =
-  let compile_case case =
-    let var_name i = fst (dest_var (fst (List.nth case.vars i))) in
+  let var_name vars i = fst (dest_var (fst (List.nth vars i))) in
+  let compile_case ty_inst case =
+    let vars = case.vars in
     let rec compile_pat = function
-      | Pvar i, Tfun (args, _) -> mk_tuple [Raw (var_name i); Raw ("func_" ^ var_name i)]
-      | Pvar i, _ -> Raw (var_name i)
+      | Pvar i, Tfun (args, _) -> mk_tuple [Raw (var_name vars i); Raw ("func_" ^ var_name vars i)]
+      | Pvar i, _ -> Raw (var_name vars i)
       | Papp _, Tfun _ -> failwith "Patterns are not allowed for functions"
       | Papp (c, ps), ty ->
         let c_name, _ = dest_const c in
@@ -618,20 +639,50 @@ let compile_function func =
         List.fold_left (fun l r -> App (Raw "Comb", Tuple [l; r])) cst 
           (List.map (fun p -> compile_pat (p, ty)) ps) in
     let pats = List.map compile_pat case.args in
-    let body = compile_rhs case in
+    let body = compile_rhs ty_inst case in
     pats, body
   in
-  match List.map compile_case func.cases with
+  let ty_inst =
+    if func.poly_indices = [] then None
+    else Some (mk_raw "ty_inst") in
+  let get_ty_exprs arg_exprs =
+    if func.poly_indices = [] then []
+    else
+      let arg_list = List.map (List.nth arg_exprs) func.poly_indices in
+      let e = mk_app (Raw "itlist2", [
+        Raw "type_match"; 
+        Raw func.arg_ty_name; 
+        mk_list (List.map (fun a -> App (Raw "type_of", a)) arg_list); 
+        mk_list []
+      ]) in
+      [mk_let ("ty_inst", e)] in
+  let case1 = hd func.cases in
+  match List.map (compile_case ty_inst) func.cases with
   | [] -> failwith "compile_function: no cases"
-  | [args, body] when forall (function (Pvar _, _) -> true | _ -> false) (hd func.cases).args ->
-    Let (true, func.name, args, body, None)
+  | [args, body] when forall (function (Pvar _, _) -> true | _ -> false) case1.args ->
+    let arg_exprs = 
+      List.map (fun arg ->
+        match arg with
+        | (Pvar i, _) -> Raw (var_name case1.vars i)
+        | _ -> failwith "impossible") 
+      case1.args in
+    let body_expr = chain_let (get_ty_exprs arg_exprs @ [body]) in
+    Let (true, func.name, args, body_expr, None)
   | cs ->
-    let arg_names = enum_names "tm" (List.length (hd func.cases).args) in
+    let arg_names = enum_names "tm" (List.length case1.args) in
+    let arg_exprs = 
+      List.mapi (fun i arg ->
+        let name = "tm" ^ string_of_int (i + 1) in
+        match arg with
+        | (_, Tfun _) -> App (Raw "fst", Raw name)
+        | _ -> Raw name)
+      case1.args in
     let err_pat = 
       (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
     let cs' = List.map (fun (pats, body) -> mk_tuple pats, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
-    Let (true, func.name, List.map mk_raw arg_names, match_expr, None);;
+    let body = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
+    Let (true, func.name, List.map mk_raw arg_names, body, None);;
 
 let compile_rules db rules =
   let max_index name =
@@ -652,10 +703,10 @@ let compile_rules db rules =
     mk_let (var_name, 
       App (Raw "standardize_tm", 
         App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) in
-  let get_tm_expr tm =
+  (* let get_tm_expr tm =
     let ty = type_of tm in
     App (Raw "parse_term", 
-      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in
+      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in *)
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
     let path = find_path ((=) abs_tm) base_tm in
@@ -664,8 +715,20 @@ let compile_rules db rules =
       mk_let ~body:(Some eq_expr) ("abs_tm",
         App (Raw "list_mk_comb", 
           mk_tuple [mk_app (Raw "follow_path", [String path; App (Raw "concl", Raw base_name)]);
-                    mk_list (map get_tm_expr args)])) in
+                    App (Raw (Format.sprintf "map (C follow_path (concl %s))" base_name),
+                         mk_list (map (fun tm -> String (find_path ((=) tm) base_tm)) args))])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) in
+  let get_poly_indices case =
+    (* TODO: find a minimal cover of all type variables *)
+    List.mapi (fun i (_, t) -> i, t) case.args
+    |> List.filter (fun (i, t) -> get_type_vars t <> [])
+    |> List.map fst in
+  let get_arg_types_expr func =
+    let case1 = hd func.cases in
+    let e1 = mk_let ("_, args",
+      Raw (Format.sprintf "strip_comb (fst (dest_eq (concl %s)))" case1.th_name)) in
+    let e2 = App (Raw "map (fun i -> type_of (el i args))", mk_int_list func.poly_indices) in
+    mk_let (func.arg_ty_name, chain_let [e1; e2]) in
   let name_vars vars =
     (* TODO: consider types if names coincide *)
     map (fun v -> v, "var_" ^ fst (dest_var v)) vars in
@@ -701,7 +764,8 @@ let compile_rules db rules =
     let f = {
       name = rule.f_name;
       arg_types = map snd (hd cases).args;
-      poly_indices = [];
+      poly_indices = get_poly_indices (hd cases);
+      arg_ty_name = Format.sprintf "ty_%s" rule.f_name;
       cases = cases;
     } in
     abs, f :: fs) ((0, []), []) rules in
@@ -716,22 +780,30 @@ let compile_rules db rules =
       |> map (fun rw -> rw.thm_name)
       |> setify
       |> map get_th_expr in
-  let var_exprs = map get_var_expr vars in
+  let var_exprs = 
+    vars |> filter (fun (v, _) -> tyvars (type_of v) = [])
+         |> map get_var_expr in
   let abs_th_exprs = map get_abs_expr (snd abs) in
-  let abs_exprs = map (fun (_, (_, (abs_rw: db_rec), _, _)) as abs ->
+  let abs_fs = map (fun (_, (_, (abs_rw: db_rec), _, _)) as abs ->
     let abs_case = get_abs_case vars abs in
-    let abs_f = {
-      name = abs_rw.f_name;
+    let name = abs_rw.f_name in {
+      name = name;
       arg_types = map snd abs_case.args;
-      poly_indices = [];
+      poly_indices = get_poly_indices abs_case;
+      arg_ty_name = Format.sprintf "ty_%s" name;
       cases = [abs_case];
-    } in
-    compile_function abs_f) (snd abs) in
+    }) (snd abs) in
+  let ty_exprs =
+    filter (fun f -> f.poly_indices <> []) (abs_fs @ fs)
+    |> map get_arg_types_expr in
+  let abs_exprs = map compile_function abs_fs in
   let f_names = map (fun f -> f.name) fs in
   let f_exprs = map compile_function fs in
   let result_expr = mk_tuple (map mk_raw f_names) in
-  let main_expr = 
-    chain_let (th_exprs @ var_exprs @ abs_th_exprs @ abs_exprs @ [mk_let_and f_exprs; result_expr]) in
+  let main_expr =
+    let prelude = th_exprs @ var_exprs @ abs_th_exprs @ ty_exprs in
+    let f_expr = if List.length f_exprs > 1 then mk_let_and f_exprs else hd f_exprs in
+    chain_let (prelude @ abs_exprs @ [f_expr; result_expr]) in
   mk_let (String.concat ", " f_names, main_expr);;
 
 
@@ -779,6 +851,7 @@ let compile_term db f_name tm =
       name = abs_rw.f_name;
       arg_types = map snd abs_case.args;
       poly_indices = [];
+      arg_ty_name = "";
       cases = [abs_case];
     } in
     compile_function abs_f) abs in
