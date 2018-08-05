@@ -83,7 +83,10 @@ let eq_intro thm =
   else EQT_INTRO thm;;
   
 let split_thm th =
-  List.map (standardize o eq_intro) (BODY_CONJUNCTS th);;
+  let split th =
+    let ths = try eliminate_top_match th with _ -> [th] in
+    List.map (standardize o eq_intro) ths in
+  BODY_CONJUNCTS th |> List.map split |> flat;;
 
 let fix_name, clear_fixes, add_fix_repl =
   let repls = ref [] in
