@@ -859,3 +859,26 @@ let compile_term db f_name tm =
   let expr = compile_eval_tree "tm" eval_tree in
   mk_let (f_name,
     chain_let (tm_expr :: abs_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
+
+
+let print_rules db fmt ?term rule_names =
+  let exprs' = map (compile_rules db o get_entries db) rule_names in
+  let exprs =
+    match term with
+    | None -> exprs'
+    | Some tm -> exprs' @ [compile_term db "result" tm] in
+  let sep fmt () = Format.fprintf fmt ";;@,@," in
+  Format.fprintf fmt "@[<v>%a;;@]@."
+    (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
+
+let write_rules db ?(margin = 200) ?term fname rule_names =
+  let oc = open_out fname in
+  try
+    let fmt = Format.formatter_of_out_channel oc in
+    Format.pp_set_margin fmt margin;
+    print_rules db fmt ?term rule_names;
+    Format.pp_print_flush fmt ();
+    close_out oc
+  with e ->
+    close_out_noerr oc;
+    raise e;;
