@@ -251,29 +251,36 @@ let add_thms db ths =
 
 type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
 
+
 type app_type = 
     Basic_app of term 
   | Const_app of db_rec 
   | Var_app of string
   | Abs_app of term * eval_tree
 
+and func_app_rec = {
+  app_type: app_type;
+  applied_args: eval_tree list;
+  extra_args: app_arg_type list;
+  (* Arguments for free variables inside abstractions *)
+  fixed_args: term list;
+}
+
 and eval_tree =
     Refl of term
-  | Func_app of app_type * eval_tree list
-  (* head, args, extra args (we only need to know their types) *)
-  | Partial_app of app_type * eval_tree list * app_arg_type list;;
+  | Func_app of func_app_rec;;
 
 let get_eval_type = function
   | Refl _ -> Arg_term
-  | Func_app _ -> Arg_theorem
-  | Partial_app _ -> Arg_function;;
+  | Func_app {extra_args = []} -> Arg_theorem
+  | Func_app {extra_args = _ :: _} -> Arg_function;;
 
 let is_eval_tree_refl = function
   | Refl _ -> true
   | _ -> false;;
 
 let is_basic_app = function
-  | Func_app (Basic_app _, _) | Partial_app (Basic_app _, _, _) -> true
+  | Func_app {app_type = Basic_app _} -> true
   | _ -> false;;
 
 let build_eval_tree db =
@@ -291,13 +298,14 @@ let build_eval_tree db =
       | _ -> failwith "mk_app: head should be a variable, a constant, or an abstraction" in
     match get_type head with
     | Tfun (l, _) ->
-      let n = List.length l - List.length args in
-      if n > 0 then
-        let _, extra = chop_list (List.length args) l in
-        let tys = List.map (function Tfun _ -> Arg_function | Ttype _ -> Arg_term) extra in
-        Partial_app (app_type, args, tys)
-      else
-        Func_app (app_type, args)
+      let _, extra = chop_list (List.length args) l in
+      let tys = List.map (function Tfun _ -> Arg_function | Ttype _ -> Arg_term) extra in
+      Func_app { 
+        app_type = app_type; 
+        applied_args = args; 
+        extra_args = tys; 
+        fixed_args = [] 
+      }
     | _ -> failwith "mk_app: head should be a function"
   and build tm =
     match tm with
@@ -321,21 +329,15 @@ let optimize_eval_tree =
     head', rest in
   let rec optimize = function
     | Refl _ as t -> t
-    | Func_app (Basic_app head, args) ->
+    | Func_app ({app_type = Basic_app head; applied_args = args; extra_args = extra} as app) ->
       let head', args' = split_args head (List.map optimize args) in
-      if args' = [] then
+      if args' = [] && extra = [] then
         Refl head'
       else
-        Func_app (Basic_app head', args')
-    | Partial_app (Basic_app head, args, extra) ->
-      let head', args' = split_args head (List.map optimize args) in
-      Partial_app (Basic_app head', args', extra)
-    | Func_app (t, args) ->
+        Func_app {app with app_type = Basic_app head'; applied_args = args'}
+    | Func_app ({app_type = t; applied_args = args} as app) ->
       let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
-      Func_app (t', List.map optimize args)
-    | Partial_app (t, args, extra) ->
-      let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
-      Partial_app (t', List.map optimize args, extra) in
+      Func_app {app with app_type = t'; applied_args = List.map optimize args} in
   optimize;;
 
 let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
@@ -352,14 +354,13 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
       } in
       (abstractions := !abstractions @ [(tm, (body, rw, base_tm, base_name))]); rw in
   let rec extract = function
-    | Func_app (Abs_app (tm, body), args) ->
+    | Func_app ({app_type = Abs_app (tm, body); applied_args = args} as app) ->
       let body' = extract body in
-      Func_app (Const_app (assoc_rewrite tm body'), map extract args)
-    | Partial_app (Abs_app (tm, body), args, extra) ->
-      let body' = extract body in
-      Partial_app (Const_app (assoc_rewrite tm body'), map extract args, extra)
-    | Func_app (t, args) -> Func_app (t, map extract args)
-    | Partial_app (t, args, extra) -> Partial_app (t, map extract args, extra)
+      Func_app { app with 
+        app_type = Const_app (assoc_rewrite tm body'); 
+        applied_args = map extract args 
+      }
+    | Func_app app -> Func_app {app with applied_args = map extract app.applied_args}
     | Refl _ as t -> t
   in
   let result = extract eval_tree in
@@ -549,24 +550,24 @@ let compile_eval_tree =
     chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"] @ 
       [type_expr; t_var; e_var; cond_eq; cond_th; if_expr])
   in
-  let compile_app compile name app_type args extra_args =
-    let arg_names = enum_names "a" (List.length args) in
-    let extra_names = enum_names "tm" (List.length extra_args) in
-    let arg_list = map2 (fun name arg -> name, get_eval_type arg) arg_names args in
-    let full_arg_list = arg_list @ map2 (fun name ty -> name, ty) extra_names extra_args in
+  let compile_app compile name app (*app_type args extra_args*) =
+    let arg_names = enum_names "a" (List.length app.applied_args) in
+    let extra_names = enum_names "tm" (List.length app.extra_args) in
+    let arg_list = map2 (fun name arg -> name, get_eval_type arg) arg_names app.applied_args in
+    let full_arg_list = arg_list @ zip extra_names app.extra_args in
     let extract_arg (arg_name, arg_type) =
       match arg_type with
       | Arg_term -> Raw arg_name
       | Arg_theorem -> App (Raw "rand", App (Raw "concl", Raw arg_name))
       | Arg_function -> Raw arg_name in
     let final_expr = 
-      match app_type with
+      match app.app_type with
       | Abs_app _ -> failwith "compile_eval_tree: Abs_app is not allowed"
       | Basic_app _ -> mk_comb "op" full_arg_list
       | Const_app _ | Var_app _ ->
         let args' = map extract_arg full_arg_list in
         let f_name = 
-          match app_type with 
+          match app.app_type with 
           | Const_app f -> f.f_name 
           | Var_app f -> "func_" ^ f 
           | _ -> failwith "impossible" in
@@ -578,29 +579,29 @@ let compile_eval_tree =
           let e3 = mk_app (Raw "TRANS", [e2; Raw "f_eq"]) in
           append_let_body e1 e3 in
     let arg_eqs =
-      zip arg_list args
+      zip arg_list app.applied_args
       |> List.filter (fun ((_, ty), _) -> ty <> Arg_term)
       |> List.map (fun ((name, _), arg) -> mk_let (name, compile name arg)) in
     chain_let (dest_comb name arg_names @ arg_eqs @ [final_expr]), arg_names, extra_names
   in
   let rec compile name t =
     match t with
-    | Func_app (Basic_app (Const ("COND", _)), [cond_arg; then_arg; else_arg]) ->
+    | Func_app {app_type = Basic_app (Const ("COND", _)); applied_args = [cond_arg; then_arg; else_arg]} ->
       compile_cond name (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
     | Refl _ -> mk_refl (Raw name)
-    | Partial_app (app_type, [], _) when not (is_basic_app t) ->
+    | Func_app ({applied_args = []} as app) when not (is_basic_app t) ->
       let f_name = 
-        (match app_type with
+        (match app.app_type with
         | Var_app name -> "func_" ^ name
         | Const_app rw -> rw.f_name
-        | _ -> failwith "Partial_app (Basic_app) is not allowed") in
+        | _ -> failwith "Partial_app (Basic_app, Abs_app) is not allowed") in
       mk_tuple [Raw name; Raw f_name]
-    | Partial_app (app_type, args, extra_args) ->
-      let body_expr, _, extra_names = compile_app compile name app_type args extra_args in
-      mk_tuple [Raw name; Lambda (List.map mk_raw extra_names, body_expr)]
-    | Func_app (app_type, args) ->
-      let body_expr, _, _ = compile_app compile name app_type args [] in
-      body_expr
+    | Func_app app ->
+      let body_expr, _, extra_names = compile_app compile name app in
+      if extra_names = [] then
+        body_expr
+      else
+        mk_tuple [Raw name; Lambda (List.map mk_raw extra_names, body_expr)]
   in
   compile;;
 
