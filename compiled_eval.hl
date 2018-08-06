@@ -88,6 +88,29 @@ let split_thm th =
     List.map (standardize o eq_intro) ths in
   BODY_CONJUNCTS th |> List.map split |> flat;;
 
+(* The same as find_path but also considers variables in Abs *)
+let find_full_path =
+  let rec find p tm =
+    match tm with
+    | _ when p tm -> []
+    | Abs (v, b) -> (try "b" :: find p b with Failure _ -> "v" :: find p v)
+    | Comb (l, r) -> (try "r" :: find p r with Failure _ -> "l" :: find p l)
+    | _ -> failwith "find_full_path" in
+  fun p tm ->
+    implode (find p tm);;
+
+let follow_full_path =
+  let rec follow s tm =
+    match s with
+    | [] -> tm
+    | "v" :: t -> follow t (bndvar tm)
+    | "b" :: t -> follow t (body tm)
+    | "r" :: t -> follow t (rand tm)
+    | "l" :: t -> follow t (rator tm)
+    | _ -> failwith "follow_full_path" in
+  fun s tm ->
+    follow (explode s) tm;;
+
 let fix_name, clear_fixes, add_fix_repl =
   let repls = ref [] in
   let clear () = repls := [] in
@@ -712,14 +735,14 @@ let compile_rules db rules =
       String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in *)
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
-    let path = find_path ((=) abs_tm) base_tm in
+    let path = find_full_path ((=) abs_tm) base_tm in
     let eq_expr = App (Raw "standardize", App (Raw "GEN_BETAS_CONV", Raw "abs_tm")) in
     let def_expr =
       mk_let ~body:(Some eq_expr) ("abs_tm",
         App (Raw "list_mk_comb", 
-          mk_tuple [mk_app (Raw "follow_path", [String path; App (Raw "concl", Raw base_name)]);
-                    App (Raw (Format.sprintf "map (C follow_path (concl %s))" base_name),
-                         mk_list (map (fun tm -> String (find_path ((=) tm) base_tm)) args))])) in
+          mk_tuple [mk_app (Raw "follow_full_path", [String path; App (Raw "concl", Raw base_name)]);
+                    App (Raw (Format.sprintf "map (C follow_full_path (concl %s))" base_name),
+                         mk_list (map (fun tm -> String (find_full_path ((=) tm) base_tm)) args))])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) in
   let get_poly_indices case =
     (* TODO: find a minimal cover of all type variables *)
@@ -823,12 +846,12 @@ let compile_term db f_name tm =
       String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
-    let path = find_path ((=) abs_tm) base_tm in
+    let path = find_full_path ((=) abs_tm) base_tm in
     let eq_expr = App (Raw "standardize", App (Raw "GEN_BETAS_CONV", Raw "abs_tm")) in
     let def_expr =
       mk_let ~body:(Some eq_expr) ("abs_tm",
         App (Raw "list_mk_comb", 
-          mk_tuple [mk_app (Raw "follow_path", [String path; Raw base_name]);
+          mk_tuple [mk_app (Raw "follow_full_path", [String path; Raw base_name]);
                     mk_list (map get_tm_expr args)])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) in
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
