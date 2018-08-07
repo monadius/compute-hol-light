@@ -1,5 +1,10 @@
 #load "str.cma";;
 
+let func_of_conv const (conv: conv) =
+  let f args =
+    conv (list_mk_comb (const, args)) in
+  f;;
+
 (* A performance improvement trick from calc_num.ml *)
 let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =
   let cache = Hashtbl.create 100 in
@@ -217,6 +222,24 @@ let get_entries db names =
   map (fun name -> assoc name es) names;;
 
 let empty_db () = (Hashtbl.create 100 : (string, db_rec) Hashtbl.t);;
+
+let set_rule db ?name const =
+  let c_name, _ = dest_const const in
+  let f_name = 
+    match name with 
+    | None -> "f_" ^ fix_name c_name
+    | Some name -> name in
+  let nargs =
+    match get_type const with
+    | Tfun (args, _) -> List.length args
+    | _ -> 0 in
+  let r: db_rec = {
+    f_name = f_name;
+    const = const;
+    nargs = nargs;
+    rewrites = [];
+  } in
+  Hashtbl.add db c_name r;;
 
 let add_thm db (thm_name, index, eq_th) =
   let lhs, rhs = dest_eq (concl eq_th) in
