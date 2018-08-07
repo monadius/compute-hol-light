@@ -1,0 +1,71 @@
+needs "compiled_eval.hl";;
+
+let true_tm = standardize_tm `T`;;
+let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
+let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
+
+let f_EQ =
+  let const = `(=):num->num->bool` in
+  fun a b -> NUM_EQ_CONV (list_mk_comb (const, [a; b]));;
+
+let f_SUC =
+  let const = `SUC` in
+  fun a -> NUM_SUC_CONV (mk_comb (const, a));;
+
+let f_PRE =
+  let const = `PRE` in
+  fun a -> NUM_PRE_CONV (mk_comb (const, a));;
+
+let f_ADD =
+  let const = `+` in
+  fun a b -> NUM_ADD_CONV (list_mk_comb (const, [a; b]));;
+
+let f_SUB =
+  let const = `-` in
+  fun a b -> NUM_SUB_CONV (list_mk_comb (const, [a; b]));;
+
+let f_MUL =
+  let const = `*` in
+  fun a b -> NUM_MULT_CONV (list_mk_comb (const, [a; b]));;
+
+let f_LE =
+  let const = `<=` in
+  fun a b -> NUM_LE_CONV (list_mk_comb (const, [a; b]));;
+
+let f_LT =
+  let const = `<` in
+  fun a b -> NUM_LT_CONV (list_mk_comb (const, [a; b]));;
+
+let f_GE =
+  let const = `>=` in
+  fun a b -> NUM_GE_CONV (list_mk_comb (const, [a; b]));;
+
+let f_GT =
+  let const = `>` in
+  fun a b -> NUM_GT_CONV (list_mk_comb (const, [a; b]));;
+
+let f_NOT =
+  let NOT_CLAUSES_case1, NOT_CLAUSES_case2, NOT_CLAUSES_case3 =
+    match split_thm NOT_CLAUSES with
+    | [th1; th2; th3] -> (th1, th2, th3)
+    | _ -> failwith "error"
+     in
+  let rec f_NOT tm1 =
+    match tm1 with
+    | Const ("T", _) -> NOT_CLAUSES_case2
+    | Const ("F", _) -> NOT_CLAUSES_case3
+    | _ -> failwith "No match: f_NOT"
+     in
+  f_NOT
+;;
+
+
+let default_db () =
+  let db = empty_db() in
+  List.iter (fun c -> set_rule db c) [
+    `(=):A->A->bool`;
+    `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`;
+    `~`; `/\`; `\/`
+  ];
+  db;;
+
