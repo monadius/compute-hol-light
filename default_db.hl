@@ -5,8 +5,93 @@ let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]
 let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
 
 let f_EQ =
-  let const = `(=):num->num->bool` in
-  fun a b -> NUM_EQ_CONV (list_mk_comb (const, [a; b]));;
+  let num_eq = `(=):num->num->bool` in
+  let var_a_bool = `a:bool` in
+  let f_const = `F` in
+  let f_and = prove(`F /\ a <=> F`, REWRITE_TAC[]) in
+  let t_and = prove(`T /\ a <=> a`, REWRITE_TAC[]) in
+  let refl_eq = prove(`x:A = x <=> T`, REWRITE_TAC[]) in
+  let pair_eq = prove(`x:A,y:B = a,b <=> x = a /\ y = b`, REWRITE_TAC[PAIR_EQ]) in
+  let option_case1 = prove(`SOME (x:A) = SOME y <=> x = y`, REWRITE_TAC[injectivity "option"]) and
+      option_case2 = prove(`NONE = SOME (x:A) <=> F`, REWRITE_TAC[distinctness "option"]) and
+      option_case3 = prove(`SOME (x:A) = NONE <=> F`, REWRITE_TAC[distinctness "option"]) in
+  let list_case1 = prove(`CONS (x:A) xs = CONS y ys <=> x = y /\ xs = ys`, REWRITE_TAC[injectivity "list"]) and
+      list_case2 = prove(`[] = CONS (x:A) xs <=> F`, REWRITE_TAC[distinctness "list"]) and
+      list_case3 = prove(`CONS (x:A) xs = [] <=> F`, REWRITE_TAC[distinctness "list"])
+  in
+  let rec f_EQ tm1 tm2 =
+    try
+      match (tm1, tm2) with
+      | Comb (Const ("NUMERAL", _), _), Comb (Const ("NUMERAL", _), _) ->
+        NUM_EQ_CONV (mk_comb (mk_comb (num_eq, tm1), tm2))
+      | x, y when x = y ->
+        let ty = type_of x in
+        let var_x = mk_var ("x", ty) in
+        INST[x, var_x] (INST_TYPE [ty, aty] refl_eq)
+      | Comb (Comb (Const (",", Tyapp ("fun", [xty; Tyapp ("fun", [yty; _])])), x), y), Comb (Comb (Const (",", _), a), b) ->
+        let var_x = mk_var ("x", xty) in
+        let var_y = mk_var ("y", yty) in
+        let var_a = mk_var ("a", xty) in
+        let var_b = mk_var ("b", yty) in
+        let th = INST [b, var_b; a, var_a; y, var_y; x, var_x] (INST_TYPE [xty, aty; yty, bty] pair_eq) in
+        let rhs = rand (concl th) in
+        let rhs_eq =
+          let op, a2 = dest_comb rhs in
+          let op, a1 = dest_comb op in
+          let a1 = f_EQ x a in
+          if rand (concl a1) = f_const then
+            let and_th = INST[a2, var_a_bool] f_and in
+            TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
+          else
+            let a2 = f_EQ y b in
+            let and_th = INST[rand (concl a2), var_a_bool] t_and in
+            TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
+        TRANS th rhs_eq
+      | Comb (Const ("SOME", Tyapp ("fun", [ty; _])), x), Comb (Const ("SOME", _), y) ->
+        let var_x = mk_var ("x", ty) in
+        let var_y = mk_var ("y", ty) in
+        let th = INST [x, var_x; y, var_y] (INST_TYPE [ty, aty] option_case1) in
+        let rhs_eq = f_EQ x y in
+        TRANS th rhs_eq
+      | Const ("NONE", Tyapp ("option", [ty])), Comb (Const ("SOME", _), x) ->
+        let var_x = mk_var ("x", ty) in
+        INST[x, var_x] (INST_TYPE [ty, aty] option_case2)
+      | Comb (Const ("SOME", _), x), Const ("NONE", Tyapp ("option", [ty])) ->
+        let var_x = mk_var ("x", ty) in
+        INST[x, var_x] (INST_TYPE [ty, aty] option_case3)
+      | Comb (Comb (Const ("CONS", Tyapp ("fun", [xty; Tyapp ("fun", [xsty; _])])), x), xs), Comb (Comb (Const ("CONS", _), y), ys) ->
+        let var_x = mk_var ("x", xty) in
+        let var_y = mk_var ("y", xty) in
+        let var_xs = mk_var ("xs", xsty) in
+        let var_ys = mk_var ("ys", xsty) in
+        let th = INST [ys, var_ys; xs, var_xs; y, var_y; x, var_x] (INST_TYPE [xty, aty] list_case1) in
+        let rhs = rand (concl th) in
+        let rhs_eq =
+          let op, a2 = dest_comb rhs in
+          let op, a1 = dest_comb op in
+          let a1 = f_EQ x y in
+          if rand (concl a1) = f_const then
+            let and_th = INST[a2, var_a_bool] f_and in
+            TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
+          else
+            let a2 = f_EQ xs ys in
+            let and_th = INST[rand (concl a2), var_a_bool] t_and in
+            TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
+        TRANS th rhs_eq
+      | Const ("NIL", (Tyapp ("list", [xty]) as xsty)), Comb (Comb (Const ("CONS", _), x), xs) ->
+        let var_x = mk_var ("x", xty) in
+        let var_xs = mk_var ("xs", xsty) in
+        INST[x, var_x; xs, var_xs] (INST_TYPE [xty, aty] list_case2)
+      | Comb (Comb (Const ("CONS", _), x), xs), Const ("NIL", (Tyapp ("list", [xty]) as xsty)) ->
+        let var_x = mk_var ("x", xty) in
+        let var_xs = mk_var ("xs", xsty) in
+        INST[x, var_x; xs, var_xs] (INST_TYPE [xty, aty] list_case3)
+      | _ -> failwith "No match: f_EQ"
+    with
+    | Failure msg -> eval_error msg "f_EQ" [tm1; tm2]
+    | Eval_error err -> eval_error_propagate err "f_EQ" [tm1; tm2]
+     in
+  f_EQ;;
 
 let f_SUC =
   let const = `SUC` in
