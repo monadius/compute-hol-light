@@ -50,15 +50,61 @@ let f_NOT =
     | [th1; th2; th3] -> (th1, th2, th3)
     | _ -> failwith "error"
      in
+  let var_t = standardize_tm (mk_var ("t", `:bool`)) in
   let rec f_NOT tm1 =
-    match tm1 with
-    | Const ("T", _) -> NOT_CLAUSES_case2
-    | Const ("F", _) -> NOT_CLAUSES_case3
-    | _ -> failwith "No match: f_NOT"
+    try
+      match tm1 with
+      | Comb (Const ("~", _), t) -> INST [t, var_t] NOT_CLAUSES_case1
+      | Const ("T", _) -> NOT_CLAUSES_case2
+      | Const ("F", _) -> NOT_CLAUSES_case3
+      | _ -> failwith "No match: f_NOT"
+    with
+    | Failure msg -> eval_error msg "f_NOT" [tm1]
+    | Eval_error err -> eval_error_propagate err "f_NOT" [tm1]
      in
-  f_NOT
-;;
+  f_NOT;;
 
+let f_AND =
+  let AND_CLAUSES_case1, AND_CLAUSES_case2, AND_CLAUSES_case3, AND_CLAUSES_case4, AND_CLAUSES_case5 =
+    match split_thm AND_CLAUSES with
+    | [th1; th2; th3; th4; th5] -> (th1, th2, th3, th4, th5)
+    | _ -> failwith "error"
+     in
+  let var_t = standardize_tm (mk_var ("t", `:bool`)) in
+  let rec f_AND tm1 tm2 =
+    try
+      match (tm1, tm2) with
+      | (Const ("T", _), t) -> INST [t, var_t] AND_CLAUSES_case1
+      | (t, Const ("T", _)) -> INST [t, var_t] AND_CLAUSES_case2
+      | (Const ("F", _), t) -> INST [t, var_t] AND_CLAUSES_case3
+      | (t, Const ("F", _)) -> INST [t, var_t] AND_CLAUSES_case4
+      | _ -> failwith "No match: f_AND"
+    with
+    | Failure msg -> eval_error msg "f_AND" [tm1; tm2]
+    | Eval_error err -> eval_error_propagate err "f_AND" [tm1; tm2]
+     in
+  f_AND;;
+
+let f_OR =
+  let OR_CLAUSES_case1, OR_CLAUSES_case2, OR_CLAUSES_case3, OR_CLAUSES_case4, OR_CLAUSES_case5 =
+    match split_thm OR_CLAUSES with
+    | [th1; th2; th3; th4; th5] -> (th1, th2, th3, th4, th5)
+    | _ -> failwith "error"
+     in
+  let var_t = standardize_tm (mk_var ("t", `:bool`)) in
+  let rec f_OR tm1 tm2 =
+    try
+      match (tm1, tm2) with
+      | (Const ("T", _), t) -> INST [t, var_t] OR_CLAUSES_case1
+      | (t, Const ("T", _)) -> INST [t, var_t] OR_CLAUSES_case2
+      | (Const ("F", _), t) -> INST [t, var_t] OR_CLAUSES_case3
+      | (t, Const ("F", _)) -> INST [t, var_t] OR_CLAUSES_case4
+      | _ -> failwith "No match: f_OR"
+    with
+    | Failure msg -> eval_error msg "f_OR" [tm1; tm2]
+    | Eval_error err -> eval_error_propagate err "f_OR" [tm1; tm2]
+     in
+  f_OR;;
 
 let default_db () =
   let db = empty_db() in
