@@ -96,7 +96,7 @@ let eliminate_top_match th =
   match dest_match rhs with
   | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
     map (fun (p, _, _) -> 
-      let eq = REWRITE_CONV[] (subst[p, arg] tm) in
+      let eq = (TOP_DEPTH_CONV MATCH_CONV) (subst[p, arg] tm) in
       let th0 = INST[p, arg] th in
       EQ_MP eq th0) pats
   | _ -> failwith "eliminate_top_match";;
@@ -929,14 +929,13 @@ let compile_rules db rules =
   let ty_exprs =
     filter (fun f -> f.poly_indices <> []) (abs_fs @ fs)
     |> map get_arg_types_expr in
-  let abs_exprs = map compile_function abs_fs in
   let f_names = map (fun f -> f.name) fs in
-  let f_exprs = map compile_function fs in
+  let f_exprs = map compile_function (abs_fs @ fs) in
   let result_expr = mk_tuple (map mk_raw f_names) in
   let main_expr =
     let prelude = th_exprs @ var_exprs @ abs_th_exprs @ ty_exprs in
     let f_expr = if List.length f_exprs > 1 then mk_let_and f_exprs else hd f_exprs in
-    chain_let (prelude @ abs_exprs @ [f_expr; result_expr]) in
+    chain_let (prelude @ [f_expr; result_expr]) in
   mk_let (String.concat ", " f_names, main_expr);;
 
 
