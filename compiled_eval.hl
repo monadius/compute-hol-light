@@ -1,5 +1,29 @@
 #load "str.cma";;
 
+let generate_eval_errors = ref true;;
+
+type eval_error = {
+  failure_msg: string;
+  eval_name: string;
+  eval_args: term list;
+};;
+
+exception Eval_error of eval_error list;;
+
+let eval_error msg name args =
+  raise (Eval_error [{
+    failure_msg = msg;
+    eval_name = name;
+    eval_args = args;
+  }]);;
+
+let eval_error_propagate errs name args =
+  raise (Eval_error ({
+    failure_msg = (match errs with err :: _ -> err.failure_msg | _ -> "");
+    eval_name = name;
+    eval_args = args;
+  } :: errs));;
+
 let func_of_conv const (conv: conv) =
   let f args =
     conv (list_mk_comb (const, args)) in
@@ -35,6 +59,11 @@ let rec split_while p = function
       x :: a, b
     else
       [], l;;
+
+let strip_comb_gabs tm =
+  match strip_comb tm with
+  | Const ("GABS", _) as op, a1 :: args -> mk_comb (op, a1), args
+  | op, args as r -> r;;
 
 let dest_pattern =
   let dest_geq = dest_binary "GEQ" in
@@ -336,11 +365,7 @@ let build_eval_tree db =
   and build tm =
     match tm with
     | Comb _ ->
-      let op, args = strip_comb tm in
-      let op, args =
-        match (op, args) with
-        | Const ("GABS", _), h :: t -> mk_comb (op, h), t
-        | _ -> op, args in
+      let op, args = strip_comb_gabs tm in
       let arg_trees = List.map build args in
       mk_app op arg_trees
     | _ -> (try mk_app tm [] with Failure _ -> Refl tm)
@@ -396,6 +421,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
 
 type expr =
   | Match of expr * (expr * expr) list
+  | Try of expr * (expr * expr) list
   | Lambda of expr list * expr
   | Tuple of expr list
   | List_expr of expr list
@@ -414,7 +440,7 @@ let is_let = function Let _ -> true | _ -> false;;
 let is_match = function Match _ -> true | _ -> false;;
 
 let is_compound = function
-  | Let _ | Let_and _ | Match _ | Lambda _ -> true
+  | Let _ | Let_and _ | Match _ | Try _ | Lambda _ -> true
   | _ -> false;;
 
 let mk_app (head, args) =
@@ -515,6 +541,19 @@ let print_expr =
       (Format.pp_print_list ~pp_sep:(fun fmt () -> ()) (print_let true)) exprs
       print_expr body
   | Let_and _ -> failwith "Let_and: empty list"
+  | Try (expr, cases) ->
+    Format.fprintf fmt "@[<v 2>try@ %a@]@ with@,| %a"
+      print_expr expr
+      (Format.pp_print_list 
+        ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "| ")
+        (fun fmt (pat, body) ->
+          let f = format_of_string 
+            (if is_compound body then
+              "@[<v>%a ->@ %a@]@,"
+             else
+              "@[<hv>%a ->@ %a@]@,") in
+          Format.fprintf fmt f
+            print_expr pat print_expr body)) cases
   | Match (expr, cases) ->
     Format.fprintf fmt "match %a with@,| %a"
       print_expr expr
@@ -724,6 +763,16 @@ let compile_function func =
         mk_list []
       ]) in
       [mk_let ("ty_inst", e)] in
+  let add_try expr arg_exprs =
+    if not !generate_eval_errors then expr
+    else
+      let case1 = (Raw "Failure msg", 
+                   mk_app (Raw "eval_error", 
+                    [Raw "msg"; String func.name; mk_list arg_exprs])) in
+      let case2 = (Raw "Eval_error err",
+                   mk_app (Raw "eval_error_propagate", 
+                    [Raw "err"; String func.name; mk_list arg_exprs])) in
+      Try (expr, [case1; case2]) in
   let case1 = hd func.cases in
   match List.map (compile_case ty_inst) func.cases with
   | [] -> failwith "compile_function: no cases"
@@ -735,7 +784,7 @@ let compile_function func =
         | _ -> failwith "impossible") 
       case1.args in
     let body_expr = chain_let (get_ty_exprs arg_exprs @ [body]) in
-    Let (true, func.name, args, body_expr, None)
+    Let (true, func.name, args, add_try body_expr arg_exprs, None)
   | cs ->
     let arg_names = enum_names "tm" (List.length case1.args) in
     let arg_exprs = 
@@ -750,7 +799,7 @@ let compile_function func =
     let cs' = List.map (fun (pats, body) -> mk_tuple pats, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
     let body = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
-    Let (true, func.name, List.map mk_raw arg_names, body, None);;
+    Let (true, func.name, List.map mk_raw arg_names, add_try body arg_exprs, None);;
 
 let compile_rules db rules =
   let max_index name =
@@ -794,7 +843,7 @@ let compile_rules db rules =
   let get_arg_types_expr func =
     let case1 = hd func.cases in
     let base_args_expr = mk_let ("_, args",
-      Raw (Format.sprintf "strip_comb (fst (dest_eq (concl %s)))" case1.th_name)) in
+      Raw (Format.sprintf "strip_comb_gabs (fst (dest_eq (concl %s)))" case1.th_name)) in
     let fixed_args_expr =
       let list_expr = 
         mk_list (map (fun tm ->
