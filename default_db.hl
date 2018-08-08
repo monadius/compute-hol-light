@@ -129,6 +129,14 @@ let f_GT =
   let const = `>` in
   fun a b -> NUM_GT_CONV (list_mk_comb (const, [a; b]));;
 
+let f_MIN =
+  let const = `MIN` in
+  fun a b -> NUM_MIN_CONV (list_mk_comb (const, [a; b]));;
+
+let f_MAX =
+  let const = `MAX` in
+  fun a b -> NUM_MAX_CONV (list_mk_comb (const, [a; b]));;
+
 let f_NOT =
   let NOT_CLAUSES_case1, NOT_CLAUSES_case2, NOT_CLAUSES_case3 =
     match split_thm NOT_CLAUSES with
@@ -195,7 +203,7 @@ let default_db () =
   let db = empty_db() in
   List.iter (fun c -> set_rule db c) [
     `(=):A->A->bool`;
-    `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`;
+    `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
     `~`; `/\`; `\/`
   ];
   db;;
