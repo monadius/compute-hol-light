@@ -285,6 +285,9 @@ let size_list_DEF = define
 let fst_DEF = define
  `fst (x1, x2) = x1`;;
 
+let snd_DEF = define
+  `snd (x1, x2) = x2`;;
+
 let mapAt_DEF = define
  `mapAt ns f asa =
   match ns with
@@ -772,6 +775,477 @@ let makeFaceFinal_DEF = define
     (map (makeFaceFinalFaceList f) (faceListAt g))
     (heights g)`;;
 
+
+let LET_ELIM_THM = prove
+ (`(!P e. (let x = e in P x) = P e) /\
+   (!P e. (let x,y = e in P x y) = P (FST e) (SND e)) /\
+   (!P e. (let x,y,z = e in P x y z) = P (FST e) (FST(SND e)) (SND(SND e)))`,
+  REWRITE_TAC[FORALL_PAIR_THM; LET_DEF; LET_END_DEF]);;
+
+
+let subdivFacea_DEF =
+  let tm =
+   `subdivFacea g f u n vos =
+      match vos with
+      | [] -> makeFaceFinal f g
+      | (vo :: vos) ->
+        (match vo with NONE -> subdivFacea g f u (SUC n) vos
+          | SOME v ->
+            (if (=) (nextVertex f u) v /\
+                  (=) n 0
+              then subdivFacea g f v 0 vos
+              else let
+                     ws =
+                       upt (countVertices g)
+                         ((+) (countVertices g) n)
+                   in let
+                     (_, (f_2, ga)) = splitFace g u v f ws
+                   in
+                     subdivFacea ga f_2 v 0 vos))` in
+  let th = REWRITE_CONV[LET_ELIM_THM] tm in
+  let tm' = rand(concl th) in
+  let def = define tm' in
+  REWRITE_RULE[GSYM th] def;;
+
+let subdivFacea_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
+  (`subdivFacea g f u n [] = makeFaceFinal f g
+    /\ subdivFacea g f u n (NONE :: vos) = subdivFacea g f u (SUC n) vos
+    /\ subdivFacea g f u n (SOME v :: vos) =
+        if nextVertex f u = v /\ n = 0 then subdivFacea g f v 0 vos
+        else
+          let ws = upt (countVertices g) (countVertices g + n) in
+          let (unused, (f_2, ga)) = splitFace g u v f ws in
+            subdivFacea ga f_2 v 0 vos`,
+  REPEAT CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [subdivFacea_DEF] THEN REWRITE_TAC[]);;
+
+let subdivFace_DEF = define
+ `subdivFace g f vos =
+  subdivFacea g f (the (hd vos)) 0 (tl vos)`;;
+
+
+
+let vector_vector_INDUCT,vector_vector_RECURSION = define_type
+ "vector_vector = Array num (num->A)";;
+
+let vector_sub_DEF = define
+ `vector_sub (Array n f) m = f m`;;
+
+let vector_tabulate_DEF = define
+ `vector_tabulate n f = Array n f`;;
+
+let sub_DEF = define
+ `sub asa n = vector_sub asa n`;;
+
+let of_fun_DEF = define
+ `of_fun f n = vector_tabulate n f`;;
+
+let tabulate2_DEF = define
+ `tabulate2 m n f = of_fun (\i. of_fun (f i) n) m`;;
+
+
+let enumAppend_DEF = define
+ `enumAppend nmax iss =
+  maps
+    (\is.
+      map (\n. APPEND is [n]) (upt (last is) (SUC nmax)))
+    iss`;;
+
+let enumBase_DEF = define
+ `enumBase nmax =
+  map (\i. [i]) (upt 0 (SUC nmax))`;;
+
+let enumerator_DEF = define
+  `enumerator inner outer =
+   (let nmax = outer - 2 in
+    let k = inner - 3 in
+    map (\is. APPEND [0] (APPEND is [outer - 1]))
+    (funpow k (enumAppend nmax) (enumBase nmax)))`;;
+
+let enumerator_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] enumerator_DEF;;
+
+let enumTab_DEF = define
+ `enumTab = tabulate2 9 9 enumerator`;;
+
+let enum_DEF = define
+ `enum inner outer =
+     (if inner < 9 /\ outer < 9
+      then sub (sub enumTab inner) outer
+      else enumerator inner outer)`;;
+
+let enum_ALT = prove
+  (`enum inner outer = enumerator inner outer`,
+  REWRITE_TAC[enum_DEF] THEN
+    SUBGOAL_THEN `sub (sub enumTab inner) outer = enumerator inner outer` (fun th -> REWRITE_TAC[th; COND_ID]) THEN
+    REWRITE_TAC[enumTab_DEF; tabulate2_DEF; of_fun_DEF; vector_tabulate_DEF; sub_DEF; vector_sub_DEF]);;
+
+let hideDupsRec_DEF = define
+ `hideDupsRec a bs =
+  match bs with
+  | [] -> []
+  | (b :: bs) ->
+    (if (=) a b then NONE :: hideDupsRec b bs
+      else SOME b :: hideDupsRec b bs)`;;
+
+let hideDups_DEF = define
+ `hideDups bs =
+  match bs with
+  | [] -> []
+  | (b :: bs) -> SOME b :: hideDupsRec b bs`;;
+
+let indexToVertexList_DEF = define
+ `indexToVertexList f v is =
+  hideDups (map (\k. nextVertices f k v) is)`;;
+
+let notame_DEF = define
+ `notame g <=> ~ (tame10ub g /\ tame11b g)`;;
+
+let d4_const_DEF = define
+ `d4_const : num =
+  squanderFace ( ( 4))`;;
+
+let d3_const_DEF = define
+ `d3_const : num =
+  squanderFace ( ( 3))`;;
+
+let excessAtType_DEF = define
+ `excessAtType t q e =
+     (if e = 0
+      then if 7 < t + q
+           then squanderTarget
+           else squanderVertex t q - t * d3_const - q * d4_const
+      else if ~((t + q) + e = 6)
+           then 0
+           else if t = 5 then excessTCount else squanderTarget)`;;
+
+let excessAtType_ALT = 
+  REWRITE_RULE [d3_const_DEF; d4_const_DEF; squanderTarget_DEF; 
+    squanderFace_DEF; MULT_0; SUB_0; ARITH; excessTCount_DEF]
+  excessAtType_DEF;;
+
+let excessAt_DEF = define
+ `excessAt g v =
+  (if ~ (finalVertex g v) then 0
+    else excessAtType (tri g v) (quad g v) (except g v))`;;
+
+let faceSquanderLowerBound_DEF = define
+ `faceSquanderLowerBound g =
+  listSum (finals g)
+    (\f. squanderFace (size_list (vertices_face f)))`;;
+
+let deleteAround_DEF = define
+ `deleteAround g v ps =
+   (let vs =
+        (\f. let n = nextVertex f v in
+             if size_list (vertices_face f) = 4
+             then [n; nextVertex f n]
+             else [n]) in
+    removeKeyList (maps vs (facesAt g v)) ps)`;;
+
+let deleteAround_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] deleteAround_DEF;;
+
+let LENGTH_FILTER = prove
+ (`!p l. LENGTH(filter p l) <= LENGTH l`,
+  GEN_TAC THEN LIST_INDUCT_TAC THEN ONCE_REWRITE_TAC[filter_DEF] THEN
+  REWRITE_TAC[] THEN
+  REPEAT COND_CASES_TAC THEN REWRITE_TAC[LENGTH] THEN ASM_ARITH_TAC);;
+
+let LENGTH_REMOVEKEY = prove
+ (`!a ps. LENGTH(removeKey a ps) <= LENGTH ps`,
+  REWRITE_TAC[removeKey_DEF; LENGTH_FILTER]);;
+
+let LENGTH_REMOVEKEYLIST = prove
+ (`!ws ps. LENGTH(removeKeyList ws ps) <= LENGTH ps`,
+  LIST_INDUCT_TAC THEN ONCE_REWRITE_TAC[removeKeyList_DEF] THEN
+  REWRITE_TAC[LE_REFL] THEN ASM_MESON_TAC[LENGTH_REMOVEKEY; LE_TRANS]);;
+
+let LENGTH_DELETEAROUND = prove
+ (`!g v ps. LENGTH(deleteAround g v ps) <= LENGTH ps`,
+  REWRITE_TAC[deleteAround_DEF; LET_DEF; LET_END_DEF; LENGTH_REMOVEKEYLIST]);;
+
+let excessNotAtRec_DEF =
+  let eth = prove_general_recursive_function_exists
+   `?excessNotAtRec. !ps.
+     excessNotAtRec ps =
+    match ps with
+    | [] -> (\_ . 0)
+    | ((x, y) :: ps) ->
+      (\g.
+        MAX (excessNotAtRec ps g)
+            ((+) y (excessNotAtRec (deleteAround g x ps) g)))` in
+  let th0 = ISPEC `MEASURE(\l:(num#num)list. LENGTH l)`
+   (REWRITE_RULE[LEFT_IMP_EXISTS_THM] (DISCH_ALL eth)) in
+  let th1 = REWRITE_RULE[WF_MEASURE; MEASURE; admissible] th0 in
+  let th2 =
+   prove(lhand(concl th1),
+         REWRITE_TAC[FORALL_PAIR_THM; FUN_EQ_THM] THEN
+         REPEAT GEN_TAC THEN ONCE_REWRITE_TAC[IMP_CONJ] THEN
+         DISCH_THEN(CONJUNCTS_THEN(ASSUME_TAC o GSYM)) THEN
+         ASM_REWRITE_TAC[CONS_11; LENGTH] THEN
+         SIMP_TAC[LENGTH; ARITH_RULE `n < SUC n`] THEN
+         REWRITE_TAC[LT_SUC_LE] THEN ASM_MESON_TAC[LENGTH_DELETEAROUND]) in
+  let def = new_specification ["excessNotAtRec"] (MP th1 th2) in
+  SPEC_ALL def;;
+
+let excessNotAtRec_ALT = prove
+  (`excessNotAtRec [] unused = 0
+    /\ excessNotAtRec ((x, y) :: ps) g =
+        MAX (excessNotAtRec ps g) (y + excessNotAtRec (deleteAround g x ps) g)`,
+  CONJ_TAC THEN GEN_REWRITE_TAC (LAND_CONV o RATOR_CONV) [excessNotAtRec_DEF] THEN REWRITE_TAC[]);;
+
+let excessTable_DEF = define
+ `excessTable g =
+  map_filter
+    (\v.
+      let
+        e = excessAt g v
+      in
+        (if (<) 0 e then SOME (v, e) else NONE))`;;
+
+let excessTable_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
+  (`excessTable g vs = 
+      map_filter (\v. let e = excessAt g v in if 0 < e then SOME (v, e) else NONE) vs`,
+  REWRITE_TAC[excessTable_DEF]);;
+
+let excessNotAt_DEF = define
+ `excessNotAt g v_opt =
+  let
+    ps = excessTable g (vertices_graph g)
+  in
+    (match v_opt with NONE -> excessNotAtRec ps g
+      | SOME v -> excessNotAtRec (deleteAround g v ps) g)`;;
+
+let excessNotAt_ALT = prove
+  (`excessNotAt g NONE = 
+      excessNotAtRec (excessTable g (vertices_graph g)) g
+    /\ excessNotAt g (SOME v) = 
+        excessNotAtRec (deleteAround g v (excessTable g (vertices_graph g))) g`,
+  REWRITE_TAC[excessNotAt_DEF; LET_DEF; LET_END_DEF]);;
+
+let squanderLowerBound_DEF = define
+ `squanderLowerBound g =
+  (+) (faceSquanderLowerBound g) (excessNotAt g NONE)`;;
+
+let polysizes_DEF = define
+ `polysizes p g =
+     (let lb = squanderLowerBound g in
+      filter (\n. lb + squanderFace n < squanderTarget)
+      (upt 3 (SUC (maxGon p))))`;;
+
+let polysizes_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF; squanderTarget_DEF] polysizes_DEF;;
+
+let is_tame13a_DEF = define
+ `is_tame13a g = (<) (squanderLowerBound g) squanderTarget`;;
+
+let is_tame13a_ALT = REWRITE_RULE[squanderTarget_DEF] is_tame13a_DEF;;
+
+let generatePolygonTame_DEF = define
+ `generatePolygonTame n v f g =
+    (let enumeration = enum n (size_list (vertices_face f)) in
+      let enumerationa =
+          filter (\is. ~containsDuplicateEdge g f v is) enumeration in
+      let vertexLists = map (indexToVertexList f v) enumerationa in
+      filter (\ga. ~notame ga) (map (subdivFace g f) vertexLists))`;;
+
+let generatePolygonTame_ALT =
+  REWRITE_RULE[LET_DEF; LET_END_DEF] generatePolygonTame_DEF;;
+
+let next_tame0_DEF = define
+ `next_tame0 p g =
+  let
+    fs = nonFinals g
+  in
+    (if null fs then []
+      else let
+             f = minimalFace fs
+           in let
+             v = minimalVertex g f
+           in
+             maps (\i. generatePolygonTame i v f g) (polysizes p g))`;;
+
+let next_tame0_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
+  (`next_tame0 p g =
+      let fs = nonFinals g in
+      if null fs then []
+      else
+        let f = minimalFace fs in
+        maps (\i. generatePolygonTame i (minimalVertex g f) f g) (polysizes p g)`,
+  REWRITE_TAC[next_tame0_DEF; LET_DEF; LET_END_DEF]);;
+
+let is_tame_DEF = define
+ `is_tame g <=>
+  tame10 g /\
+    (tame11a g /\ (tame12o g /\ is_tame13a g))`;;
+
+let next_tame_DEF = define
+ `next_tame p =
+  filter (\g. ~ (final_graph g) \/ is_tame g) o
+    next_tame0 p`;;
+
+let next_tame_ALT = prove
+  (`next_tame p g = filter (\g. ~(final_graph g) \/ is_tame g) (next_tame0 p g)`,
+  REWRITE_TAC[next_tame_DEF; o_DEF]);;
+
+let worklist_tree_aux_DEF = define
+ `worklist_tree_aux succs f (ws, s) =
+  (match ws with [] -> SOME ([]:real list, s)
+    | x :: wsa -> worklist_tree_aux succs f (APPEND (succs x) wsa, f x s))`;;
+
+let worklist_tree_DEF = define
+ `(worklist_tree:(A -> A list) -> (A -> B -> B) -> A list -> B -> B option)
+  succs f ws s =
+  (match worklist_tree_aux succs f (ws, s) with NONE -> NONE
+    | SOME (_ :real list, a) -> SOME a)`;;
+
+let worklist_tree_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
+  (`worklist_tree succs (f:A->B->B) ws s =
+      let aux = worklist_tree_aux succs f (ws, s) in
+      if is_none aux then NONE
+      else 
+        SOME (snd (the aux))`,
+  LET_TAC THEN ASM_REWRITE_TAC[worklist_tree_DEF] THEN
+    DISJ_CASES_TAC (ISPEC `aux:((real)list#B)option` (cases "option")) THEN ASM_REWRITE_TAC[is_none_DEF] THEN
+    POP_ASSUM STRIP_ASSUME_TAC THEN ASM_REWRITE_TAC[] THEN
+    STRIP_ASSUME_TAC (ISPEC `a:(real)list#B` PAIR_SURJECTIVE) THEN
+    ASM_REWRITE_TAC[snd_DEF; the_DEF]);;
+
+let nof_vertices_DEF = define
+ `nof_vertices = size_list o remdups o concat`;;
+
+let nof_vertices_ALT = prove
+  (`nof_vertices ns = size_list (remdups (concat ns))`,
+  REWRITE_TAC[nof_vertices_DEF; o_DEF]);;
+
+
+let qsort_DEF =
+  let eth = prove_general_recursive_function_exists
+   `?qsort. !le:(A->A->bool) xs.
+        qsort le xs =
+         match xs with
+         | [] -> []
+         | (x :: xs) ->
+           APPEND (qsort le (filter (\y. ~ (le x y)) xs))
+           (APPEND [x] (qsort le (filter (le x) xs)))` in
+  let th1 = REWRITE_RULE[LEFT_IMP_EXISTS_THM] (DISCH_ALL eth) in
+  let th2 = SPEC `MEASURE(\((le:A->A->bool),(xs:A list)). LENGTH xs)` th1 in
+  let th3 = prove(lhand(concl th2),
+                  REWRITE_TAC[WF_MEASURE; MEASURE] THEN
+                  REPEAT STRIP_TAC THEN
+                  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+                  REWRITE_TAC[LENGTH; LT_SUC_LE; LENGTH_FILTER]) in
+  let def = new_specification ["qsort"] (MP th2 th3) in
+  SPEC_ALL def;;
+
+let hash_DEF = define
+ `hash fs =
+  let n = nof_vertices fs in
+    APPEND [n; size_list fs]
+      (qsort (\x y. y < x)
+        (map
+          (\i.
+            foldl (+) 0
+              (map_filter
+                (\t. if member t i then SOME (size_list t) else NONE)
+                fs))
+          (upt 0 n)))`;;
+
+let hash_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] hash_DEF;;
+
+let fgraph_DEF = define
+ `fgraph g = map vertices_face (faces g)`;;
+
+let merge_DEF = define
+ `merge xys i =
+  match xys with
+  | [] -> i
+  | (xy :: xys) ->
+    let (x, _) = xy in
+      (if pred_list (\(xa, _). ~ ((=) x xa)) i
+        then xy :: merge xys i else merge xys i)`;;
+
+let merge_ALT = prove
+  (`merge [] (i:(A#B)list) = i
+    /\ merge ((x, y) :: xys) i = 
+        if pred_list (\(xa, unused). ~(x = xa)) i then
+          (x, y) :: merge xys i
+        else
+          merge xys i`,
+  CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [merge_DEF] THEN REWRITE_TAC[] THEN
+    REWRITE_TAC[LET_DEF; LET_END_DEF; PAIR_EQ]);;
+
+let compat_DEF = define
+ `compat ia i =
+    pred_list (\(x, y). pred_list (\(xa, ya). (=) ((=) x xa) ((=) y ya)) i) ia`;;
+
+
+let pr_iso_test_rec_DEF = define
+ `pr_iso_test_rec i fs_1 fs_2 =
+  match fs_1 with
+  | [] -> null fs_2
+  | (f_1 :: fs_1) ->
+    list_ex
+      (\f_2.
+        (=) (size_list f_1) (size_list f_2) /\
+          ~ (all_interval_nat
+                ((~) o
+                  (\n.
+                    let
+                      ia = zip f_1 (rotate n f_2)
+                    in
+                      compat ia i /\
+                        pr_iso_test_rec (merge ia i) fs_1
+                          (remove1 f_2 fs_2)))
+                0 (size_list f_2)))
+      fs_2`;;
+
+let pr_iso_test_rec_ALT =
+  (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o REWRITE_RULE[o_DEF]) pr_iso_test_rec_DEF;;
+
+let pr_iso_test_DEF = define
+ `pr_iso_test fs_1 fs_2 = pr_iso_test_rec [] fs_1 fs_2`;;
+
+let iso_test_DEF = define
+ `iso_test g_1 g_2 <=>
+  pr_iso_test g_1 g_2 \/
+    pr_iso_test g_1 (map rev g_2)`;;
+
+let insert_mod_trie_DEF = define
+ `insert_mod_trie x m =
+  let k = hash x in 
+  let ys = lookup m k in
+    (if list_ex (iso_test x) ys
+      then m else update m k (x :: ys))`;;
+
+let insert_mod_trie_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] insert_mod_trie_DEF;;
+
+let insert_mod2_trie_DEF = define
+ `insert_mod2_trie p f x s = (if p x then insert_mod_trie (f x) s else s)`;;
+
+let worklist_tree_coll_aux_trie_DEF = define
+ `worklist_tree_coll_aux_trie succs p f =
+  worklist_tree succs (insert_mod2_trie p f)`;;
+
+let worklist_tree_coll_aux_trie_ALT = prove
+  (`worklist_tree_coll_aux_trie succs p f ws gs = 
+      worklist_tree succs (insert_mod2_trie p f) ws gs`,
+  REWRITE_TAC[worklist_tree_coll_aux_trie_DEF]);;
+
+let worklist_tree_coll_trie_DEF = define
+ `worklist_tree_coll_trie succs p f ws =
+  worklist_tree_coll_aux_trie succs p f ws (Tries [] [])`;;
+
+let enum_filter_finals_DEF = define
+ `enum_filter_finals succs =
+  worklist_tree_coll_trie succs final_graph fgraph`;;
+
+let enum_filter_finals_ALT = prove
+  (`enum_filter_finals succs ws =
+    worklist_tree_coll_trie succs final_graph fgraph ws`,
+  REWRITE_TAC[enum_filter_finals_DEF]);;
+
+let tameEnumFilter_DEF = define
+ `tameEnumFilter p = enum_filter_finals (next_tame p) [seed p]`;;
+
+
 (* Need to include additional cases *)
 let f_EQ =
   let num_eq = `(=):num->num->bool` in
@@ -781,6 +1255,8 @@ let f_EQ =
   let f_const = `F` in
   let f_and = prove(`F /\ a <=> F`, REWRITE_TAC[]) in
   let t_and = prove(`T /\ a <=> a`, REWRITE_TAC[]) in
+  let tf_eq = TAUT `T = F <=> F` and
+      ft_eq = TAUT `F = T <=> F` in
   let refl_eq = prove(`x:A = x <=> T`, REWRITE_TAC[]) in
   let pair_eq = prove(`x:A,y:B = a,b <=> x = a /\ y = b`, REWRITE_TAC[PAIR_EQ]) in
   let option_case1 = prove(`SOME (x:A) = SOME y <=> x = y`, REWRITE_TAC[injectivity "option"]) and
@@ -803,6 +1279,8 @@ let f_EQ =
         let ty = type_of x in
         let var_x = mk_var ("x", ty) in
         INST[x, var_x] (INST_TYPE [ty, aty] refl_eq)
+      | Const ("T", _), Const ("F", _) -> tf_eq
+      | Const ("F", _), Const ("T", _) -> ft_eq
       | Comb (Comb (Const (",", Tyapp ("fun", [xty; Tyapp ("fun", [yty; _])])), x), y), Comb (Comb (Const (",", _), a), b) ->
         let var_x = mk_var ("x", xty) in
         let var_y = mk_var ("y", yty) in
@@ -915,6 +1393,7 @@ let rules = [
   "all_interval_nat_ALT", all_interval_nat_ALT;
   "size_list_DEF", size_list_DEF;
   "fst_DEF", fst_DEF;
+  "snd_DEF", snd_DEF;
   "mapAt_DEF", mapAt_DEF;
   "splitAtRec_DEF", splitAtRec_DEF;
   "splitAt_DEF", splitAt_DEF;
@@ -981,6 +1460,52 @@ let rules = [
   "splitFace_ALT", splitFace_ALT;
   "makeFaceFinalFaceList_DEF", makeFaceFinalFaceList_DEF;
   "makeFaceFinal_DEF", makeFaceFinal_DEF;
+  "subdivFacea_ALT", subdivFacea_ALT;
+  "subdivFace_DEF", subdivFace_DEF;
+
+  "enumAppend_DEF", enumAppend_DEF;
+  "enumBase_DEF", enumBase_DEF;
+  "enumerator_ALT", enumerator_ALT;
+  "enum_ALT", enum_ALT;
+
+  "hideDupsRec_DEF", hideDupsRec_DEF;
+  "hideDups_DEF", hideDups_DEF;
+  "indexToVertexList_DEF", indexToVertexList_DEF;
+  "notame_DEF", notame_DEF;
+  "excessAtType_ALT", excessAtType_ALT;
+  "excessAt_DEF", excessAt_DEF;
+  "faceSquanderLowerBound_DEF", faceSquanderLowerBound_DEF;
+  "deleteAround_ALT", deleteAround_ALT;
+  
+  "excessNotAtRec_ALT", excessNotAtRec_ALT;
+  "excessTable_ALT", excessTable_ALT;
+  "excessNotAt_ALT", excessNotAt_ALT;
+  "squanderLowerBound_DEF", squanderLowerBound_DEF;
+  "polysizes_ALT", polysizes_ALT;
+  "is_tame13a_ALT", is_tame13a_ALT;
+  "generatePolygonTame_ALT", generatePolygonTame_ALT;
+  "next_tame0_ALT", next_tame0_ALT;
+  "is_tame_DEF", is_tame_DEF;
+  "next_tame_ALT", next_tame_ALT;
+  "worklist_tree_aux_DEF", worklist_tree_aux_DEF;
+  "worklist_tree_ALT", worklist_tree_ALT;
+  "nof_vertices_ALT", nof_vertices_ALT;
+
+  "qsort_DEF", qsort_DEF;
+  "hash_ALT", hash_ALT;
+  "fgraph_DEF", fgraph_DEF;
+  "merge_ALT", merge_ALT;
+  "compat_DEF", compat_DEF;
+
+  "pr_iso_test_rec_ALT", pr_iso_test_rec_ALT;
+  "pr_iso_test_DEF", pr_iso_test_DEF;
+  "iso_test_DEF", iso_test_DEF;
+  "insert_mod_trie_ALT", insert_mod_trie_ALT;
+  "insert_mod2_trie_DEF", insert_mod2_trie_DEF;
+  "worklist_tree_coll_aux_trie_ALT", worklist_tree_coll_aux_trie_ALT;
+  "worklist_tree_coll_trie_DEF", worklist_tree_coll_trie_DEF;
+  "enum_filter_finals_ALT", enum_filter_finals_ALT;
+  "tameEnumFilter_DEF", tameEnumFilter_DEF;
 ];;
 
 let const_names = 
@@ -1043,6 +1568,7 @@ f_containsUnacceptableEdge (`<=`, f_LE) `[1;2;3;4]`;;
 f_containsDuplicateEdge tm2 `Face [1;2] Nonfinal` `1` `[1;2;3]`;;
 
 let trie = `Tries [0] [1, Tries [1;2] []; 2, Tries [4] []]`;;
+type_of trie;;
 f_alist trie;;
 f_values trie;;
 f_lookup trie `[2]`;;
@@ -1058,3 +1584,42 @@ f_split_face `Face [1;2;3;4] Final` `2` `4` `[5;6]`;;
 f_splitFace tm2 `1` `2` `Face [1;2;3] Nonfinal` `[1;2]`;;
 f_makeFaceFinalFaceList `Face [1;2;3] Final` `[Face [1;2;3] Nonfinal]`;;
 f_makeFaceFinal `Face [3] Nonfinal` tm;;
+f_subdivFace tm2 `Face [3;2;1;0] Nonfinal` `[SOME 1; NONE; SOME 3]`;;
+
+f_enumAppend `5` `[[1; 2; 3; 2]; [0]]`;;
+f_enumerator `5` `7`;;
+f_enum `5` `7`;;
+
+f_hideDups `[1;2;3;3;3;4;3]`;;
+f_indexToVertexList `Face [1;2;3] Nonfinal` `2` `[1;2;0;0]`;;
+f_notame tm2;;
+f_excessAtType `2` `4` `0`;;
+f_excessAt tm2 `3`;;
+f_faceSquanderLowerBound tm2;;
+f_deleteAround tm2 `1` `[1,2; 0,3]`;;
+
+f_excessNotAtRec `[1,2; 3,4]` tm2;;
+f_excessTable tm `[0;1]`;;
+f_excessNotAt tm `SOME 0`;;
+f_squanderLowerBound tm2;;
+f_polysizes `1` tm2;;
+f_is_tame13a tm2;;
+f_generatePolygonTame `1` `0` `Face [1;2] Final` tm;;
+f_next_tame0 `2` tm2;;
+f_is_tame tm2;;
+f_next_tame `0` tm2;;
+f_nof_vertices `[[1;2]; [3]; [0;1]]`;;
+
+f_qsort (`>`, f_GT) `[1;0;3;2;4;1]`;;
+f_hash `[[1;2;3]; [1]; [2;3;4]]`;;
+f_fgraph tm2;;
+f_merge `[1,2; 5,1]` `[3,4; 1,3]`;;
+f_compat `[1,2; 5,1]` `[5,4; 1,3]`;;
+
+f_pr_iso_test `[[1;2];[3]]` `[[2;1];[2]]`;;
+f_iso_test `[[1;2];[2]]` `[[2;1];[2]]`;;
+
+let trie = `Tries [[[0]]] [1, Tries [[[1;2]]] []; 2, Tries [[[4]]] []]`;;
+f_insert_mod_trie `[[1]]` trie;;
+
+f_tameEnumFilter `0`;;

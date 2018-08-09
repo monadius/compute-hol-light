@@ -11,6 +11,8 @@ let f_EQ =
   let f_and = prove(`F /\ a <=> F`, REWRITE_TAC[]) in
   let t_and = prove(`T /\ a <=> a`, REWRITE_TAC[]) in
   let refl_eq = prove(`x:A = x <=> T`, REWRITE_TAC[]) in
+  let tf_eq = TAUT `T = F <=> F` and
+      ft_eq = TAUT `F = T <=> F` in
   let pair_eq = prove(`x:A,y:B = a,b <=> x = a /\ y = b`, REWRITE_TAC[PAIR_EQ]) in
   let option_case1 = prove(`SOME (x:A) = SOME y <=> x = y`, REWRITE_TAC[injectivity "option"]) and
       option_case2 = prove(`NONE = SOME (x:A) <=> F`, REWRITE_TAC[distinctness "option"]) and
@@ -28,6 +30,8 @@ let f_EQ =
         let ty = type_of x in
         let var_x = mk_var ("x", ty) in
         INST[x, var_x] (INST_TYPE [ty, aty] refl_eq)
+      | Const ("T", _), Const ("F", _) -> tf_eq
+      | Const ("F", _), Const ("T", _) -> ft_eq
       | Comb (Comb (Const (",", Tyapp ("fun", [xty; Tyapp ("fun", [yty; _])])), x), y), Comb (Comb (Const (",", _), a), b) ->
         let var_x = mk_var ("x", xty) in
         let var_y = mk_var ("y", yty) in
