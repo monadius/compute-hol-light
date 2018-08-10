@@ -473,6 +473,17 @@ let finalVertex_DEF = define
 let final_graph_DEF = define
  `final_graph g = null (nonFinals g)`;;
 
+let NULL_FILTER = prove
+  (`!p xs:(A)list. null (filter (\x. ~p x) xs) <=> pred_list p xs`,
+  GEN_TAC THEN LIST_INDUCT_TAC THEN ONCE_REWRITE_TAC[filter_DEF; pred_list_DEF] THENL [
+    REWRITE_TAC[null_DEF];
+    REWRITE_TAC[] THEN COND_CASES_TAC THEN ASM_REWRITE_TAC[null_DEF]
+  ]);;
+
+let final_graph_ALT = prove
+  (`final_graph (Graph fs n f h) = pred_list final_face fs`,
+  REWRITE_TAC[final_graph_DEF; nonFinals_DEF; faces_DEF; NULL_FILTER]);;
+
 let nextVertices_DEF = define
  `nextVertices f n v = funpow n (nextVertex f) v`;;
 
@@ -510,60 +521,95 @@ let tame12o_DEF = define
 let tame10ub_DEF = define
 `tame10ub g <=> countVertices g <= 15`;;
 
+(* changed 6300 -> 6295 *)
 let excessTCount_DEF = define
-`excessTCount = 6300`;;
+ `excessTCount = 6295`;;
 
 let squanderTarget_DEF = define
 `squanderTarget = 15410`;;
 
+(* changed 2060 -> 2058 *)
+(* changed 7578 -> 7120 *)
 let squanderFace_DEF = define
 `squanderFace n =
   (if n = 3
    then 0
    else if n = 4
-        then 2060
+        then 2058
         else if n = 5 then 4819
-             else if n = 6 then 7578 else squanderTarget)`;;
+             else if n = 6 then 7120 else squanderTarget)`;;
 
 let squanderFace_ALT = REWRITE_RULE[squanderTarget_DEF] squanderFace_DEF;;
 
+(* changed several numbers to values from tame.ml *)
 let squanderVertex_DEF = define
 `squanderVertex p q =
-   (if p = 0 /\ q = 3 then 6180
-    else if p = 0 /\ q = 4 then 9700
-    else if p = 1 /\ q = 2 then 6560
-    else if p = 1 /\ q = 3 then 6180
-    else if p = 2 /\ q = 1 then 7970
-    else if p = 2 /\ q = 2 then 4120
-    else if p = 2 /\ q = 3 then 12851
-    else if p = 3 /\ q = 1 then 3110
-    else if p = 3 /\ q = 2 then 8170
-    else if p = 4 /\ q = 0 then 3470
-    else if p = 4 /\ q = 1 then 3660
-    else if p = 5 /\ q = 0 then 400
-    else if p = 5 /\ q = 1 then 11360
-    else if p = 6 /\ q = 0 then 6860
-    else if p = 7 /\ q = 0 then 14500
+   (if p = 0 /\ q = 3 then 6177
+    else if p = 0 /\ q = 4 then 9696
+    else if p = 1 /\ q = 2 then 6557
+    else if p = 1 /\ q = 3 then 6176
+    else if p = 2 /\ q = 1 then 7967
+    else if p = 2 /\ q = 2 then 4116
+    else if p = 2 /\ q = 3 then 12846
+    else if p = 3 /\ q = 1 then 3106
+    else if p = 3 /\ q = 2 then 8165
+    else if p = 4 /\ q = 0 then 3466
+    else if p = 4 /\ q = 1 then 3655
+    else if p = 5 /\ q = 0 then 395
+    else if p = 5 /\ q = 1 then 11354
+    else if p = 6 /\ q = 0 then 6854
+    else if p = 7 /\ q = 0 then 14493
     else squanderTarget)`;;
 
 let squanderVertex_ALT = REWRITE_RULE[squanderTarget_DEF] squanderVertex_DEF;;
 
 let squanderVertex_ALT2 = prove
-  (`squanderVertex 0 3 = 6180
-    /\ squanderVertex 0 4 = 9700
-    /\ squanderVertex 1 2 = 6560
-    /\ squanderVertex 1 3 = 6180
-    /\ squanderVertex 2 1 = 7970
-    /\ squanderVertex 2 2 = 4120
-    /\ squanderVertex 2 3 = 12851
-    /\ squanderVertex 3 1 = 3110
-    /\ squanderVertex 3 2 = 8170
-    /\ squanderVertex 4 0 = 3470
-    /\ squanderVertex 4 1 = 3660
-    /\ squanderVertex 5 0 = 400
-    /\ squanderVertex 5 1 = 11360
-    /\ squanderVertex 6 0 = 6860
-    /\ squanderVertex 7 0 = 14500
+  (`squanderVertex p q =
+    if q = 0 then
+      (if p = 4 then 3466
+       else if p = 5 then 395
+       else if p = 6 then 6854
+       else if p = 7 then 14493
+       else 15410)
+    else if q = 1 then
+      (if p = 2 then 7967
+       else if p = 3 then 3106
+       else if p = 4 then 3655
+       else if p = 5 then 11354
+       else 15410)
+    else if q = 2 then
+      (if p = 1 then 6557
+       else if p = 2 then 4116
+       else if p = 3 then 8165
+       else 15410)
+    else if q = 3 then
+      (if p = 0 then 6177
+       else if p = 1 then 6176
+       else if p = 2 then 12846
+       else 15410)
+    else if q = 4 then
+      (if p = 0 then 9696
+       else 15410)
+    else 15410`,
+  REPEAT COND_CASES_TAC THEN ASM_REWRITE_TAC[squanderVertex_DEF; squanderTarget_DEF] THEN 
+    ASM_ARITH_TAC);;
+
+let squanderVertex_ALT3 = prove
+  (`squanderVertex 0 3 = 6177
+    /\ squanderVertex 0 4 = 9696
+    /\ squanderVertex 1 2 = 6557
+    /\ squanderVertex 1 3 = 6176
+    /\ squanderVertex 2 1 = 7967
+    /\ squanderVertex 2 2 = 4116
+    /\ squanderVertex 2 3 = 12846
+    /\ squanderVertex 3 1 = 3106
+    /\ squanderVertex 3 2 = 8165
+    /\ squanderVertex 4 0 = 3466
+    /\ squanderVertex 4 1 = 3655
+    /\ squanderVertex 5 0 = 395
+    /\ squanderVertex 5 1 = 11354
+    /\ squanderVertex 6 0 = 6854
+    /\ squanderVertex 7 0 = 14493
     /\ (~(member [0,3; 0,4; 1,2; 1,3; 2,1; 2,2; 2,3; 3,1; 3,2; 4,0; 4,1; 5,0; 5,1; 6,0; 7,0] (p,q))
         ==> squanderVertex p q = squanderTarget)`,
   REWRITE_TAC[squanderVertex_DEF; member_DEF; PAIR_EQ; ARITH_EQ] THEN
@@ -644,15 +690,15 @@ let lookup_DEF = define
       | SOME at -> lookup at asa)`;;
 
 let lookup_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
-  (`lookup (t:(A,B)tries) asa =
+  (`lookup (Tries (vs:(B)list) al) (asa:(A)list) =
     match asa with
-    | [] -> values t
+    | [] -> vs
     | (a :: asa) ->
-        let r = map_of (alist t) a in
+        let r = map_of al a in
         if is_none r then [] else lookup (the r) asa`,
   GEN_REWRITE_TAC LAND_CONV [lookup_DEF] THEN
-    DISJ_CASES_TAC (SPEC `asa:(A)list` list_CASES) THEN ASM_REWRITE_TAC[] THEN
-    POP_ASSUM MP_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN LET_TAC THEN
+    DISJ_CASES_TAC (SPEC `asa:(A)list` list_CASES) THEN ASM_REWRITE_TAC[values_DEF] THEN
+    POP_ASSUM MP_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[alist_DEF] THEN LET_TAC THEN
     DISJ_CASES_TAC (ISPEC `r:((A,B)tries)option` (cases "option")) THEN ASM_REWRITE_TAC[is_none_DEF] THEN
     POP_ASSUM MP_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[the_DEF]);;
 
@@ -675,18 +721,18 @@ let update_DEF = define
       Tries (values t) ((a, update tt asa vs) :: rem_alist a (alist t))`;;
 
 let update_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
-  (`update (t:(A,B)tries) asa vs =
+  (`update (Tries vs0 al) (asa:(A)list) (vs:(B)list) =
     match asa with
-    | [] -> Tries vs (alist t)
+    | [] -> Tries vs al
     | (a :: asa) ->
       let tt =
-        let r = map_of (alist t) a in
+        let r = map_of al a in
         if is_none r then Tries [] [] else the r 
       in
-      Tries (values t) ((a, update tt asa vs) :: rem_alist a (alist t))`,
+      Tries vs0 ((a, update tt asa vs) :: rem_alist a al)`,
   GEN_REWRITE_TAC LAND_CONV [update_DEF] THEN
-    DISJ_CASES_TAC (SPEC `asa:(A)list` list_CASES) THEN ASM_REWRITE_TAC[] THEN
-    POP_ASSUM MP_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN REPEAT LET_TAC THEN
+    DISJ_CASES_TAC (SPEC `asa:(A)list` list_CASES) THEN ASM_REWRITE_TAC[alist_DEF] THEN
+    POP_ASSUM MP_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[values_DEF] THEN REPEAT LET_TAC THEN
     REPEAT (FIRST [AP_TERM_TAC; AP_THM_TAC]) THEN
     REPEAT (POP_ASSUM (fun th -> REWRITE_TAC[SYM th])) THEN LET_TAC THEN
     DISJ_CASES_TAC (ISPEC `r:((A,B)tries)option` (cases "option")) THEN ASM_REWRITE_TAC[is_none_DEF] THEN
@@ -967,7 +1013,7 @@ let excessNotAtRec_DEF =
    `?excessNotAtRec. !ps.
      excessNotAtRec ps =
     match ps with
-    | [] -> (\_ . 0)
+    | [] -> (\un. 0)
     | ((x, y) :: ps) ->
       (\g.
         MAX (excessNotAtRec ps g)
@@ -1085,29 +1131,6 @@ let next_tame_ALT = prove
   (`next_tame p g = filter (\g. ~(final_graph g) \/ is_tame g) (next_tame0 p g)`,
   REWRITE_TAC[next_tame_DEF; o_DEF]);;
 
-let worklist_tree_aux_DEF = define
- `worklist_tree_aux succs f (ws, s) =
-  (match ws with [] -> SOME ([]:real list, s)
-    | x :: wsa -> worklist_tree_aux succs f (APPEND (succs x) wsa, f x s))`;;
-
-let worklist_tree_DEF = define
- `(worklist_tree:(A -> A list) -> (A -> B -> B) -> A list -> B -> B option)
-  succs f ws s =
-  (match worklist_tree_aux succs f (ws, s) with NONE -> NONE
-    | SOME (_ :real list, a) -> SOME a)`;;
-
-let worklist_tree_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
-  (`worklist_tree succs (f:A->B->B) ws s =
-      let aux = worklist_tree_aux succs f (ws, s) in
-      if is_none aux then NONE
-      else 
-        SOME (snd (the aux))`,
-  LET_TAC THEN ASM_REWRITE_TAC[worklist_tree_DEF] THEN
-    DISJ_CASES_TAC (ISPEC `aux:((real)list#B)option` (cases "option")) THEN ASM_REWRITE_TAC[is_none_DEF] THEN
-    POP_ASSUM STRIP_ASSUME_TAC THEN ASM_REWRITE_TAC[] THEN
-    STRIP_ASSUME_TAC (ISPEC `a:(real)list#B` PAIR_SURJECTIVE) THEN
-    ASM_REWRITE_TAC[snd_DEF; the_DEF]);;
-
 let nof_vertices_DEF = define
  `nof_vertices = size_list o remdups o concat`;;
 
@@ -1220,6 +1243,29 @@ let insert_mod_trie_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] insert_mod_tri
 let insert_mod2_trie_DEF = define
  `insert_mod2_trie p f x s = (if p x then insert_mod_trie (f x) s else s)`;;
 
+let worklist_tree_aux_DEF = define
+ `worklist_tree_aux succs f (ws, s) =
+  (match ws with [] -> SOME ([]:real list, s)
+    | x :: wsa -> worklist_tree_aux succs f (APPEND (succs x) wsa, f x s))`;;
+
+let worklist_tree_DEF = define
+ `(worklist_tree:(A -> A list) -> (A -> B -> B) -> A list -> B -> B option)
+  succs f ws s =
+  (match worklist_tree_aux succs f (ws, s) with NONE -> NONE
+    | SOME (_ :real list, a) -> SOME a)`;;
+
+let worklist_tree_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
+  (`worklist_tree succs (f:A->B->B) ws s =
+      let aux = worklist_tree_aux succs f (ws, s) in
+      if is_none aux then NONE
+      else 
+        SOME (snd (the aux))`,
+  LET_TAC THEN ASM_REWRITE_TAC[worklist_tree_DEF] THEN
+    DISJ_CASES_TAC (ISPEC `aux:((real)list#B)option` (cases "option")) THEN ASM_REWRITE_TAC[is_none_DEF] THEN
+    POP_ASSUM STRIP_ASSUME_TAC THEN ASM_REWRITE_TAC[] THEN
+    STRIP_ASSUME_TAC (ISPEC `a:(real)list#B` PAIR_SURJECTIVE) THEN
+    ASM_REWRITE_TAC[snd_DEF; the_DEF]);;
+
 let worklist_tree_coll_aux_trie_DEF = define
  `worklist_tree_coll_aux_trie succs p f =
   worklist_tree succs (insert_mod2_trie p f)`;;
@@ -1245,6 +1291,42 @@ let enum_filter_finals_ALT = prove
 let tameEnumFilter_DEF = define
  `tameEnumFilter p = enum_filter_finals (next_tame p) [seed p]`;;
 
+let tameEnumFilter_ALT = prove
+  (`tameEnumFilter p =
+      worklist_tree 
+        (next_tame p)
+        (\g s. if final_graph g then insert_mod_trie (fgraph g) s else s)
+        [seed p]
+        (Tries [] [])`,
+  REWRITE_TAC[tameEnumFilter_DEF; enum_filter_finals_DEF; worklist_tree_coll_trie_DEF; worklist_tree_coll_aux_trie_DEF] THEN
+    REPEAT (FIRST [AP_TERM_TAC; AP_THM_TAC]) THEN
+    REWRITE_TAC[FUN_EQ_THM; insert_mod2_trie_DEF]);;
+
+
+let worklist_tree_bounded_DEF = define
+  `worklist_tree_bounded n succs f ws s =
+    if n = 0 then s
+    else
+      match ws with
+      | [] -> s
+      | x :: wsa ->
+        worklist_tree_bounded (n - 1) succs f (APPEND (succs x) wsa) (f x s)`;;
+
+let worklist_tree_bounded_ALT = prove
+  (`worklist_tree_bounded n succs f [] s = s
+    /\ worklist_tree_bounded n succs f (x :: wsa) s =
+        if n = 0 then s 
+        else 
+          worklist_tree_bounded (n - 1) succs f (APPEND (succs x) wsa) (f x s)`,
+  CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [worklist_tree_bounded_DEF] THEN REWRITE_TAC[COND_ID]);;
+
+let tameEnumFilterBounded_DEF = define
+  `tameEnumFilterBounded p n =
+      worklist_tree_bounded n
+        (next_tame p)
+        (\g s. if final_graph g then insert_mod_trie (fgraph g) s else s)
+        [seed p]
+        (Tries [] [])`;;
 
 (* Need to include additional cases *)
 let f_EQ =
@@ -1423,7 +1505,7 @@ let rules = [
   "nonFinals_DEF", nonFinals_DEF;
   "vertextype_DEF", vertextype_DEF;
   "finalVertex_DEF", finalVertex_DEF;
-  "final_graph_DEF", final_graph_DEF;
+  "final_graph_ALT", final_graph_ALT;
   "nextVertices_DEF", nextVertices_DEF;
   "countVertices_DEF", countVertices_DEF;
   "directedLength_DEF", directedLength_DEF;
@@ -1437,7 +1519,7 @@ let rules = [
   "excessTCount_DEF", excessTCount_DEF;
   "squanderTarget_DEF", squanderTarget_DEF;
   "squanderFace_ALT", squanderFace_ALT;
-  "squanderVertex_ALT", squanderVertex_ALT;
+  "squanderVertex_ALT2", squanderVertex_ALT2;
   "maxGon_DEF", maxGon_DEF;
   "seed_DEF", seed_DEF;
   "duplicateEdge_DEF", duplicateEdge_DEF;
@@ -1501,11 +1583,14 @@ let rules = [
   "pr_iso_test_DEF", pr_iso_test_DEF;
   "iso_test_DEF", iso_test_DEF;
   "insert_mod_trie_ALT", insert_mod_trie_ALT;
-  "insert_mod2_trie_DEF", insert_mod2_trie_DEF;
+  (* "insert_mod2_trie_DEF", insert_mod2_trie_DEF;
   "worklist_tree_coll_aux_trie_ALT", worklist_tree_coll_aux_trie_ALT;
   "worklist_tree_coll_trie_DEF", worklist_tree_coll_trie_DEF;
-  "enum_filter_finals_ALT", enum_filter_finals_ALT;
-  "tameEnumFilter_DEF", tameEnumFilter_DEF;
+  "enum_filter_finals_ALT", enum_filter_finals_ALT; *)
+  "tameEnumFilter_ALT", tameEnumFilter_ALT;
+
+  "worklist_tree_bounded_ALT", worklist_tree_bounded_ALT;
+  "tameEnumFilterBounded_DEF", tameEnumFilterBounded_DEF;
 ];;
 
 let const_names = 
@@ -1622,4 +1707,11 @@ f_iso_test `[[1;2];[2]]` `[[2;1];[2]]`;;
 let trie = `Tries [[[0]]] [1, Tries [[[1;2]]] []; 2, Tries [[[4]]] []]`;;
 f_insert_mod_trie `[[1]]` trie;;
 
-f_tameEnumFilter `0`;;
+f_tameEnumFilter;;
+
+(* 40.714s *)
+(* original: 0.0171s *)
+(* ratio: 2381 *)
+
+(* 26.144s with COND instead of AND/OR *)
+test 1 (f_tameEnumFilterBounded `0`) `100`;;
