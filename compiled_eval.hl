@@ -116,11 +116,20 @@ let eq_intro thm =
   if is_neg (concl thm) then EQF_INTRO thm
   else EQT_INTRO thm;;
   
+let extra_rewrites =
+  let and_th = MESON[] `!P Q. P /\ Q <=> if P then Q else F` in
+  let or_th = MESON[] `!P Q. P \/ Q <=> if P then T else Q` in
+  let not_th = MESON[] `!P X Y. (if ~P then X else Y) <=> (if P then Y else X)` in
+  fun th -> PURE_REWRITE_RULE[and_th; or_th; not_th] th;;
+
 let split_thm th =
   let split th =
     let ths = try eliminate_top_match th with _ -> [th] in
     List.map (standardize o eq_intro) ths in
-  BODY_CONJUNCTS th |> List.map split |> flat;;
+  BODY_CONJUNCTS th 
+    |> List.map split 
+    |> flat
+    |> List.map extra_rewrites;;
 
 (* The same as find_path but also considers variables in Abs *)
 let find_full_path =
