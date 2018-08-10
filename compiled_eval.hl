@@ -25,7 +25,7 @@ let eval_error_propagate errs name args =
     eval_args = args;
   } :: errs));;
 
-let create_counter, reset_all_counters, get_all_counters =
+let create_counter, reset_all_counters, get_counter, get_all_counters =
   let counters = Hashtbl.create 100 in
   let create (name: string) =
     try Hashtbl.find counters name
@@ -35,10 +35,11 @@ let create_counter, reset_all_counters, get_all_counters =
       counter in
   let reset_all () =
     Hashtbl.iter (fun _ c -> c := 0) counters in
+  let get name = !(Hashtbl.find counters name) in
   let get_all () =
     [] |> Hashtbl.fold (fun name v ls -> (name, !v) :: ls) counters
        |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1) in
-  create, reset_all, get_all;;
+  create, reset_all, get, get_all;;
 
 let create_memo, clear_all_memos =
   let memos = Hashtbl.create 100 in
@@ -146,10 +147,10 @@ let eq_intro thm =
   else EQT_INTRO thm;;
   
 let extra_rewrites =
-  let and_th = MESON[] `!P Q. P /\ Q <=> if P then Q else F` in
-  let or_th = MESON[] `!P Q. P \/ Q <=> if P then T else Q` in
+  (* let and_th = MESON[] `!P Q. P /\ Q <=> if P then Q else F` in
+  let or_th = MESON[] `!P Q. P \/ Q <=> if P then T else Q` in *)
   let not_th = MESON[] `!P X Y. (if ~P then X else Y) <=> (if P then Y else X)` in
-  fun th -> PURE_REWRITE_RULE[and_th; or_th; not_th] th;;
+  fun th -> PURE_REWRITE_RULE[(*and_th; or_th;*) not_th] th;;
 
 let split_thm th =
   let split th =
@@ -682,6 +683,36 @@ let compile_eval_tree =
     chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"] @ 
       [type_expr; t_var; e_var; cond_eq; cond_th; if_expr])
   in
+  let compile_and name expr1 expr2 =
+    let a1_eq = mk_let ("a1_eq", expr1) in
+    let cond_test = Raw "rand (concl a1_eq) = true_tm" in
+    let then_branch = chain_let [
+      mk_let ("a2_eq", expr2);
+      mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
+      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) and_th"
+    ] in
+    let else_branch = chain_let [
+      mk_let ("and_th", Raw "INST[a2, p_var_bool] F_AND");
+      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) and_th"
+    ] in
+    let if_expr = If (cond_test, then_branch, else_branch) in
+    chain_let (dest_comb name ["a1"; "a2"] @ [a1_eq; if_expr])
+  in
+  let compile_or name expr1 expr2 =
+    let a1_eq = mk_let ("a1_eq", expr1) in
+    let cond_test = Raw "rand (concl a1_eq) = true_tm" in
+    let then_branch = chain_let [
+      mk_let ("or_th", Raw "INST[a2, p_var_bool] T_OR");
+      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) or_th"
+    ] in
+    let else_branch = chain_let [
+      mk_let ("a2_eq", expr2);
+      mk_let ("or_th", Raw "INST[rand (concl a2_eq), p_var_bool] F_OR");
+      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) or_th"
+    ] in
+    let if_expr = If (cond_test, then_branch, else_branch) in
+    chain_let (dest_comb name ["a1"; "a2"] @ [a1_eq; if_expr])
+  in
   let compile_app compile name app =
     let arg_names = enum_names "a" (List.length app.applied_args) in
     let extra_names = enum_names "tm" (List.length app.extra_args) in
@@ -721,6 +752,10 @@ let compile_eval_tree =
     match t with
     | Func_app {app_type = Basic_app (Const ("COND", _)); applied_args = [cond_arg; then_arg; else_arg]} ->
       compile_cond name (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
+    | Func_app {app_type = Basic_app (Const ("/\\", _)); applied_args = [arg1; arg2]} ->
+      compile_and name (compile "a1" arg1) (compile "a2" arg2)
+    | Func_app {app_type = Basic_app (Const ("\\/", _)); applied_args = [arg1; arg2]} ->
+      compile_or name (compile "a1" arg1) (compile "a2" arg2)
     | Refl _ -> mk_refl (Raw name)
     | Func_app ({applied_args = []} as app) when not (is_basic_app t) ->
       let f_name = 
