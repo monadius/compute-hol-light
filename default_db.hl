@@ -4,6 +4,12 @@ let true_tm = standardize_tm `T`;;
 let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
 let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
 
+let p_var_bool = `P: bool`;;
+let T_AND = TAUT `T /\ P <=> P` and
+    F_AND = TAUT `F /\ P <=> F` and
+    T_OR = TAUT `T \/ P <=> T` and
+    F_OR = TAUT `F \/ P <=> P`;;
+
 let f_EQ =
   let num_eq = `(=):num->num->bool` in
   let var_a_bool = `a:bool` in
@@ -208,7 +214,7 @@ let default_db () =
   List.iter (fun c -> set_rule db c) [
     `(=):A->A->bool`;
     `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
-    `~`; `/\`; `\/`
+    `~`; (*`/\`; `\/`*)
   ];
   db;;
 
