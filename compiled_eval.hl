@@ -1,6 +1,7 @@
 #load "str.cma";;
 
 let generate_eval_errors = ref true;;
+let generate_call_counters = ref false;;
 
 type eval_error = {
   failure_msg: string;
@@ -23,6 +24,20 @@ let eval_error_propagate errs name args =
     eval_name = name;
     eval_args = args;
   } :: errs));;
+
+let create_counter, reset_all_counters, get_all_counters =
+  let counters = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find counters name
+    with Not_found ->
+      let counter = ref 0 in
+      Hashtbl.add counters name counter;
+      counter in
+  let reset_all () = Hashtbl.clear counters in
+  let get_all () =
+    [] |> Hashtbl.fold (fun name v ls -> (name, !v) :: ls) counters
+       |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1) in
+  create, reset_all, get_all;;
 
 let func_of_conv const (conv: conv) =
   let f args =
@@ -238,6 +253,8 @@ let check_arg_form, check_args_form =
   check_arg_form, check_args_form;;
 
 
+type extra = Extra_counter | Extra_memo;;
+
 type rewrite_rec = {
   args: pattern list;
   arg_types: arg_type list;
@@ -251,10 +268,20 @@ type db_rec = {
   f_name: string;
   const: term;
   nargs: int;
+  extra: extra list;
   mutable rewrites: rewrite_rec list;
 };;
 
 let entries db = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+
+let same_extra e1 e2 =
+  match e1, e2 with
+  | Extra_counter, Extra_counter -> true
+  | Extra_memo, Extra_memo -> true
+  | _ -> false;;
+
+let add_extra ls e =
+  e :: filter (fun e' -> not (same_extra e e')) ls;;
 
 let get_entries db names =
   let es = entries db in
@@ -276,6 +303,7 @@ let set_rule db ?name const =
     f_name = f_name;
     const = const;
     nargs = nargs;
+    extra = [];
     rewrites = [];
   } in
   Hashtbl.add db c_name r;;
@@ -291,6 +319,7 @@ let add_thm db (thm_name, index, eq_th) =
         f_name = "f_" ^ fix_name name;
         const = cst;
         nargs = List.length arg_pats;
+        extra = [];
         rewrites = [];
       } in
       Hashtbl.add db name e; e in
@@ -410,6 +439,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
         f_name = (incr index; Format.sprintf "abs_%d" !index);
         const = tm;
         nargs = List.length (fst (strip_gabs tm));
+        extra = [];
         rewrites = [];
       } in
       (abstractions := !abstractions @ [(tm, (body, rw, base_tm, base_name))]); rw in
@@ -706,6 +736,7 @@ type func_info = {
   fixed_args: term list;
   poly_indices: int list;
   arg_ty_name: string;
+  extra: extra list;
   cases: case_info list;
 };;
 
@@ -782,6 +813,15 @@ let compile_function func =
                    mk_app (Raw "eval_error_propagate", 
                     [Raw "err"; String func.name; mk_list arg_exprs])) in
       Try (expr, [case1; case2]) in
+  let add_counter name expr =
+    mk_let ~body:(Some expr) 
+      ("()", App (Raw "incr", Raw (Format.sprintf "counter_%s" name))) in
+  let add_memo name expr =
+    expr in
+  let add_extra arg_exprs expr extra =
+    match extra with
+    | Extra_counter -> add_counter func.name expr
+    | Extra_memo -> add_memo func.name expr in
   let case1 = hd func.cases in
   match List.map (compile_case ty_inst) func.cases with
   | [] -> failwith "compile_function: no cases"
@@ -792,7 +832,8 @@ let compile_function func =
         | (Pvar i, _) -> Raw (var_name case1.vars i)
         | _ -> failwith "impossible") 
       case1.args in
-    let body_expr = chain_let (get_ty_exprs arg_exprs @ [body]) in
+    let body_expr' = chain_let (get_ty_exprs arg_exprs @ [body]) in
+    let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
     Let (true, func.name, args, add_try body_expr arg_exprs, None)
   | cs ->
     let arg_names = enum_names "tm" (List.length case1.args) in
@@ -807,10 +848,27 @@ let compile_function func =
       (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
     let cs' = List.map (fun (pats, body) -> mk_tuple pats, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
-    let body = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
-    Let (true, func.name, List.map mk_raw arg_names, add_try body arg_exprs, None);;
+    let body_expr' = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
+    let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
+    Let (true, func.name, List.map mk_raw arg_names, add_try body_expr arg_exprs, None);;
 
 let compile_rules db rules =
+  let add_global_extra f =
+    let add cond extra v = if cond then add_extra extra v else extra in
+    let extra = add !generate_call_counters f.extra Extra_counter in
+    { f with extra = extra } 
+  in
+  let get_extra_exprs fs =
+    let get_extra f es extra =
+      match extra with
+      | Extra_counter ->
+        let e = mk_let (Format.sprintf "counter_%s" f.name, 
+                        App (Raw "create_counter", String f.name)) in
+        e :: es
+      | Extra_memo -> es in
+    let iterate es f = List.fold_left (get_extra f) es f.extra in
+    List.fold_left iterate [] fs 
+  in
   let max_index name =
     flat (map (fun rule -> rule.rewrites) rules)
       |> List.filter (fun r -> r.thm_name = name)
@@ -907,6 +965,7 @@ let compile_rules db rules =
       fixed_args = [];
       poly_indices = get_poly_indices (hd cases);
       arg_ty_name = Format.sprintf "ty_%s" rule.f_name;
+      extra = rule.extra;
       cases = cases;
     } in
     abs, f :: fs) ((0, []), []) rules in
@@ -933,16 +992,19 @@ let compile_rules db rules =
       fixed_args = frees abs_tm;
       poly_indices = get_poly_indices abs_case;
       arg_ty_name = Format.sprintf "ty_%s" name;
+      extra = abs_rw.extra;
       cases = [abs_case];
     }) (snd abs) in
   let ty_exprs =
     filter (fun f -> f.poly_indices <> []) (abs_fs @ fs)
     |> map get_arg_types_expr in
   let f_names = map (fun f -> f.name) fs in
+  let fs = List.map add_global_extra fs in
+  let extra_exprs = get_extra_exprs fs in
   let f_exprs = map compile_function (abs_fs @ fs) in
   let result_expr = mk_tuple (map mk_raw f_names) in
   let main_expr =
-    let prelude = th_exprs @ var_exprs @ abs_th_exprs @ ty_exprs in
+    let prelude = th_exprs @ var_exprs @ abs_th_exprs @ ty_exprs @ extra_exprs in
     let f_expr = if List.length f_exprs > 1 then mk_let_and f_exprs else hd f_exprs in
     chain_let (prelude @ [f_expr; result_expr]) in
   mk_let (String.concat ", " f_names, main_expr);;
@@ -999,6 +1061,7 @@ let compile_term db f_name tm =
       fixed_args = [];
       poly_indices = [];
       arg_ty_name = "";
+      extra = abs_rw.extra;
       cases = [abs_case];
     } in
     compile_function abs_f) abs in
