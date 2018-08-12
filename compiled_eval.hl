@@ -216,15 +216,18 @@ let variant_name existing name =
       name' in
   loop 0;;
 
+let fix_identifier str =
+  Str.global_replace (Str.regexp "[^a-zA-Z0-9]") "_" str
+    |> Str.global_replace (Str.regexp "__+") "_"
+    |> Str.global_replace (Str.regexp "^_+\\|_+$") "";;
+
 let suffix_of_type const =
   let name, ty = dest_const const in
   let c0 = mk_const (name, []) in
   let inst = type_match (type_of c0) ty [] in
   let tys = map fst inst |> filter (not o is_vartype) in
   let str = String.concat "_" (map string_of_type tys) in
-  Str.global_replace (Str.regexp "[^a-zA-Z0-9]") "_" str
-    |> Str.global_replace (Str.regexp "__+") "_"
-    |> Str.global_replace (Str.regexp "^_+\\|_+$") "";;
+  fix_identifier str;;
 
 (* Standard names for common symbols *)
 let () =
@@ -740,6 +743,8 @@ let print_expr =
 let enum_names s n =
   List.map (fun k -> s ^ string_of_int k) (1 -- n);;
 
+let cond_types = ref [];;
+
 let compile_eval_tree =
   let mk_refl expr = App (Raw "REFL", expr) in
   let mk_comb op_name args =
@@ -771,7 +776,12 @@ let compile_eval_tree =
       else 
         mk_raw name) tms 
   in
-  let compile_cond name cond_expr then_expr else_expr =
+  let compile_cond name cond_ty cond_expr then_expr else_expr =
+    let base_name =
+      let base = "COND" in
+      if tyvars cond_ty = [] then 
+        base ^ "_" ^ fix_identifier (string_of_type cond_ty) 
+      else base in
     let type_expr = mk_let ("ty", App (Raw "type_of", Raw "then_tm")) in
     let t_var = mk_let ("then_var", App (Raw "mk_var", mk_tuple [String "t"; Raw "ty"])) in
     let e_var = mk_let ("else_var", App (Raw "mk_var", mk_tuple [String "e"; Raw "ty"])) in
@@ -779,12 +789,14 @@ let compile_eval_tree =
     let cond_th =
       mk_let ("th0", mk_comb "op" ["cond_eq", Arg_theorem; "then_tm", Arg_term; "else_tm", Arg_term]) in
     let then_branch = chain_let [
-      mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_T)");
+      (* mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_T)"); *)
+      mk_let ("th1", App (Raw "INST[then_tm, then_var; else_tm, else_var]", Raw (base_name ^ "_T")));
       mk_let ("then_eq", then_expr);
       Raw "TRANS (TRANS th0 th1) then_eq"
     ] in
     let else_branch = chain_let [
-      mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_F)");
+      (* mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_F)"); *)
+      mk_let ("th1", App (Raw "INST[then_tm, then_var; else_tm, else_var]", Raw (base_name ^ "_F")));
       mk_let ("else_eq", else_expr);
       Raw "TRANS (TRANS th0 th1) else_eq"
     ] in
@@ -860,8 +872,10 @@ let compile_eval_tree =
   in
   let rec compile name t =
     match t with
-    | Func_app {app_type = Basic_app (Const ("COND", _)); applied_args = [cond_arg; then_arg; else_arg]} ->
-      compile_cond name (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
+    | Func_app {app_type = Basic_app (Const ("COND", Tyapp ("fun", [_; Tyapp ("fun", [ty; _])])));
+                applied_args = [cond_arg; then_arg; else_arg]} ->
+      cond_types := ty :: !cond_types;
+      compile_cond name ty (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
     | Func_app {app_type = Basic_app (Const ("/\\", _)); applied_args = [arg1; arg2]} ->
       compile_and name (compile "a1" arg1) (compile "a2" arg2)
     | Func_app {app_type = Basic_app (Const ("\\/", _)); applied_args = [arg1; arg2]} ->
