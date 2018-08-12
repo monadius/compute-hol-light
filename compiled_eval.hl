@@ -1124,7 +1124,10 @@ let compile_rules db rules =
   let get_case abs rw =
     let rhs = (snd o dest_eq o concl) rw.thm in
     let th_name = Format.sprintf "%s_case%d" rw.thm_name rw.thm_index in
-    let eval_tree = build_eval_tree db rhs |> optimize_eval_tree in
+    let eval_tree =
+      try build_eval_tree db rhs |> optimize_eval_tree
+      with Failure msg ->
+        failwith (Format.sprintf "Case %s: %s" th_name msg) in
     let eval_tree, abs = extract_abs abs (concl rw.thm, th_name) eval_tree in
     let case = {
       vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) rw.fv;
