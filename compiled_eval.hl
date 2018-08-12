@@ -59,6 +59,9 @@ let func_of_conv const (conv: conv) =
     conv (list_mk_comb (const, args)) in
   f;;
 
+let string_of_term_type tm =
+  Format.sprintf "%s:%s" (string_of_term tm) (string_of_type (type_of tm));;
+
 (* A performance improvement trick from calc_num.ml *)
 let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =
   let cache = Hashtbl.create 100 in
@@ -155,11 +158,18 @@ let extra_rewrites =
 let split_thm th =
   let split th =
     let ths = try eliminate_top_match th with _ -> [th] in
-    List.map (standardize o eq_intro) ths in
+    List.map eq_intro ths in
   BODY_CONJUNCTS th 
     |> List.map split 
     |> flat
     |> List.map extra_rewrites;;
+
+let inst_type_thms tm ths =
+  let inst_type th =
+    let op, _ = concl th |> dest_eq |> fst |> strip_comb_gabs in
+    let tyi = type_match (type_of op) (type_of tm) [] in
+    INST_TYPE tyi th in
+  List.map inst_type ths;;
 
 (* The same as find_path but also considers variables in Abs *)
 let find_full_path =
@@ -196,6 +206,25 @@ let fix_name, clear_fixes, add_fix_repl =
   let fix name =
     List.fold_left (fun s (_, re, repl) -> Str.global_replace re repl s) name !repls in
   fix, clear, add_repl;;
+
+let variant_name existing name =
+  let rec loop n =
+    let name' = if n = 0 then name else name ^ string_of_int n in
+    if mem name' existing then
+      loop (n + 1)
+    else
+      name' in
+  loop 0;;
+
+let suffix_of_type const =
+  let name, ty = dest_const const in
+  let c0 = mk_const (name, []) in
+  let inst = type_match (type_of c0) ty [] in
+  let tys = map fst inst |> filter (not o is_vartype) in
+  let str = String.concat "_" (map string_of_type tys) in
+  Str.global_replace (Str.regexp "[^a-zA-Z0-9]") "_" str
+    |> Str.global_replace (Str.regexp "__+") "_"
+    |> Str.global_replace (Str.regexp "^_+\\|_+$") "";;
 
 (* Standard names for common symbols *)
 let () =
@@ -282,12 +311,25 @@ type rewrite_rec = {
 type db_rec = {
   f_name: string;
   const: term;
+  type_inst_const: term option;
   nargs: int;
   mutable extra: extra list;
   mutable rewrites: rewrite_rec list;
 };;
 
-let entries db = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+type database = Database of (string, (term * db_rec) list) Hashtbl.t;;
+
+let empty_db () = Database (Hashtbl.create 100);;
+
+let entries (Database db) = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+
+let has_entries (Database db) name =
+  Hashtbl.mem db name;;
+
+let add_entry (Database db) const entry =
+  let name, _ = dest_const const in
+  let entries = try Hashtbl.find db name with Not_found -> [] in
+  Hashtbl.replace db name ((const, entry) :: entries);;
 
 let same_extra e1 e2 =
   match e1, e2 with
@@ -298,50 +340,108 @@ let same_extra e1 e2 =
 let add_extra ls e =
   e :: filter (fun e' -> not (same_extra e e')) ls;;
 
-let get_entries db names =
-  let es = entries db in
-  map (fun name -> assoc name es) names;;
+let find_entries (Database db) const =
+  let name, ty = dest_const const in
+  let entries = Hashtbl.find db name in
+  filter (fun (c, db_rec) -> can (type_match (type_of c) ty) []) entries
+    |> map snd;;
 
-let set_extra db extra names =
-  List.iter (fun (e: db_rec) -> e.extra <- add_extra e.extra extra)
-            (get_entries db names);;
+let find_most_specific_entry db const =
+  let match_length ty1 ty2 =
+    type_match ty1 ty2 []
+      |> List.filter (fun (a, _) -> is_type a)
+      |> List.length in
+  try
+    let _, ty = dest_const const in
+    find_entries db const
+      |> List.map (fun e -> match_length (type_of e.const) ty, e)
+      |> List.sort (fun (l1, _) (l2, _) -> Pervasives.compare l1 l2)
+      |> List.hd |> snd
+  with Failure _ | Not_found ->
+    failwith (Format.sprintf "find_most_specific_entry: no entries for `%s`"
+                (string_of_term_type const));;
+
+let find_exact_entry db const =
+  let exact_match ty1 ty2 =
+    type_match ty1 ty2 []
+      |> List.for_all (fun (a, _) -> is_vartype a) in
+  try
+    let _, ty = dest_const const in
+    find_entries db const
+      |> List.find (fun e -> exact_match (type_of e.const) ty)
+  with Not_found ->
+    failwith (Format.sprintf "find_exact_entry: no entries for `%s`"
+                (string_of_term_type const));;
+
+let get_entries (Database db) names =
+  map (Hashtbl.find db) names |> flat |> map snd;;
+
+let set_extra_for_consts db extra consts =
+  List.map (find_entries db) consts
+    |> List.concat
+    |> List.iter (fun e -> e.extra <- add_extra e.extra extra);;
+
+let set_extra_for_names db extra names =
+  get_entries db names
+    |> List.iter (fun (e: db_rec) -> e.extra <- add_extra e.extra extra);;
   
-let empty_db () = (Hashtbl.create 100 : (string, db_rec) Hashtbl.t);;
-
 let set_rule db ?name const =
-  let c_name, _ = dest_const const in
-  let f_name = 
-    match name with 
-    | None -> "f_" ^ fix_name c_name
+  if can (find_exact_entry db) const then 
+    failwith (Format.sprintf "set_rule: duplicate entry for `%s`" 
+                (string_of_term_type const));
+  let c_name, cty = dest_const const in
+  let names = 
+    try get_entries db [c_name] |> List.map (fun e -> e.f_name)
+    with Not_found -> [] in
+  let f_name = variant_name names @@
+    match name with
+    | None -> ["f"; fix_name c_name; suffix_of_type const]
+                |> List.filter (fun s -> s <> "")
+                |> String.concat "_"
     | Some name -> name in
   let nargs =
     match get_type const with
     | Tfun (args, _) -> List.length args
     | _ -> 0 in
-  let r: db_rec = {
+  let entry: db_rec = {
     f_name = f_name;
     const = const;
+    type_inst_const = None;
     nargs = nargs;
     extra = [];
     rewrites = [];
   } in
-  Hashtbl.add db c_name r;;
+  add_entry db const entry;;
 
-let add_thm db (thm_name, index, eq_th) =
-  let lhs, rhs = dest_eq (concl eq_th) in
-  let fv, cst, arg_pats = check_arg_form lhs in
-  let name, _ = dest_const cst in
+let add_thm db ?type_tm (thm_name, index, eq_th) =
+  let const, _ = concl eq_th |> dest_eq |> fst |> strip_comb in
+  let name, cty = dest_const const in
+  let key_const, type_inst = 
+    match type_tm with 
+    | None -> const, []
+    | Some const -> const, type_match cty (type_of const) [] in
+  if name <> fst (dest_const key_const) then failwith "add_thm: bad type_tm";
+  let th1 = INST_TYPE type_inst eq_th in
+  let lhs, rhs = dest_eq (concl th1) in
+  let fv, _, arg_pats = check_arg_form lhs in
   let entry =
-    try Hashtbl.find db name
-    with Not_found -> 
+    try find_exact_entry db key_const
+    with Failure _ ->
+      let names = 
+        try get_entries db [name] |> List.map (fun e -> e.f_name)
+        with Not_found -> [] in
       let e = {
-        f_name = "f_" ^ fix_name name;
-        const = cst;
+        f_name = ["f"; fix_name name; suffix_of_type key_const]
+                  |> List.filter (fun s -> s <> "")
+                  |> String.concat "_"
+                  |> variant_name names;
+        const = key_const;
+        type_inst_const = if key_const = const then None else Some key_const;
         nargs = List.length arg_pats;
         extra = [];
         rewrites = [];
       } in
-      Hashtbl.add db name e; e in
+      add_entry db key_const e; e in
   if entry.nargs <> List.length arg_pats then
     failwith (Format.sprintf "Incorrect number of arguments for '%s' in '%s'" 
                              name (string_of_thm eq_th));
@@ -349,20 +449,25 @@ let add_thm db (thm_name, index, eq_th) =
     args = arg_pats;
     arg_types = map get_type @@ snd (strip_comb lhs);
     fv = fv;
-    thm = eq_th;
+    thm = th1;
     thm_name = thm_name;
     thm_index = index;
   } :: entry.rewrites;;
 
 let add_thms db ths =
-  let add (name, th) =
+  let add (name, th, type_tms) =
     let eqs = split_thm th in
-    List.iteri (fun i th -> add_thm db (name, i + 1, th)) eqs in
+    let add_all type_tm = 
+      List.iteri (fun i th -> add_thm db ?type_tm (name, i + 1, th)) eqs in
+    match type_tms with
+    | [] -> add_all None
+    | _ -> List.iter (fun tm -> add_all (Some tm)) type_tms
+  in
   List.iter add ths;
   db;;
 
-type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
 
+type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
 
 type app_type = 
     Basic_app of term 
@@ -404,10 +509,12 @@ let build_eval_tree db =
         Abs_app (head, build body)
       | Var (name, _) -> Var_app name
       | Const (name, _) -> begin
-          try Const_app (Hashtbl.find db name)
-          with Not_found -> Basic_app head
+          if has_entries db name then
+            Const_app (find_most_specific_entry db head)
+          else
+            Basic_app head
         end
-      | _ -> failwith "mk_app: head should be a variable, a constant, or an abstraction" in
+      | _ -> invalid_arg "mk_app: head should be a variable, a constant, or an abstraction" in
     match get_type head with
     | Tfun (l, _) ->
       let _, extra = chop_list (List.length args) l in
@@ -418,14 +525,14 @@ let build_eval_tree db =
         extra_args = tys; 
         fixed_args = [] 
       }
-    | _ -> failwith "mk_app: head should be a function"
+    | _ -> invalid_arg "mk_app: head should be a function"
   and build tm =
     match tm with
     | Comb _ ->
       let op, args = strip_comb_gabs tm in
       let arg_trees = List.map build args in
       mk_app op arg_trees
-    | _ -> (try mk_app tm [] with Failure _ -> Refl tm)
+    | _ -> (try mk_app tm [] with Invalid_argument _ -> Refl tm)
   in
   build;;
 
@@ -457,6 +564,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
       let rw = {
         f_name = (incr index; Format.sprintf "abs_%d" !index);
         const = tm;
+        type_inst_const = None;
         nargs = List.length (fst (strip_gabs tm));
         extra = [];
         rewrites = [];
@@ -567,7 +675,9 @@ let print_expr =
   and print_expr fmt = function
   | Raw s -> Format.fprintf fmt "%s" s
   | String s -> Format.fprintf fmt "\"%s\"" s
-  | Term tm -> Format.fprintf fmt "`%s`" (string_of_term tm)
+  | Term tm -> 
+    Format.fprintf fmt "`(%s):%s`" 
+      (string_of_term tm) (string_of_type (type_of tm))
   | Tuple es -> 
     Format.fprintf fmt "(%a)" 
       (Format.pp_print_list 
@@ -938,25 +1048,39 @@ let compile_rules db rules =
   let max_index name =
     flat (map (fun rule -> rule.rewrites) rules)
       |> List.filter (fun r -> r.thm_name = name)
-      |> List.fold_left (fun m r -> max m r.thm_index) 0 in
+      |> List.fold_left (fun m r -> max m r.thm_index) 0 
+  in
+  let rule_of_th_name th_name =
+    let test_rule r = can (find (fun rw -> rw.thm_name = th_name)) r.rewrites in
+    find test_rule rules
+  in
+  let get_type_inst_const th_name =
+    try (rule_of_th_name th_name).type_inst_const
+    with _ -> None
+  in
   let get_th_expr name =
     let n = max_index name in
+    let th_expr = 
+      let e1 = App (Raw "split_thm", Raw name) in
+      let e2 =
+        match get_type_inst_const name with
+        | None -> e1
+        | Some tm -> mk_app (Raw "inst_type_thms", [Term tm; e1]) in
+      mk_app (Raw "map", [Raw "standardize"; e2]) in
     let names = enum_names (name ^ "_case") n in
     let pat_names = enum_names "th" n in
     mk_let (String.concat ", " names,
-      Match (App (Raw "split_thm", Raw name),
+      Match (th_expr,
         [Raw ("[" ^ String.concat "; " pat_names ^ "]"), mk_tuple (List.map mk_raw pat_names);
-         Raw "_", Raw "failwith \"error\""])) in
+         Raw "_", Raw "failwith \"error\""])) 
+  in
   let get_var_expr (tm, var_name) =
     let name, ty = dest_var tm in
     let ty_str = Format.sprintf "`:%s`" (string_of_type ty) in
     mk_let (var_name, 
       App (Raw "standardize_tm", 
-        App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) in
-  (* let get_tm_expr tm =
-    let ty = type_of tm in
-    App (Raw "parse_term", 
-      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in *)
+        App (Raw "mk_var", mk_tuple [String name; Raw ty_str])))
+  in
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
     let path = find_full_path ((=) abs_tm) base_tm in
@@ -967,12 +1091,14 @@ let compile_rules db rules =
           mk_tuple [mk_app (Raw "follow_full_path", [String path; App (Raw "concl", Raw base_name)]);
                     App (Raw (Format.sprintf "map (C follow_full_path (concl %s))" base_name),
                          mk_list (map (fun tm -> String (find_full_path ((=) tm) base_tm)) args))])) in
-    mk_let (abs_rw.f_name ^ "_th", def_expr) in
+    mk_let (abs_rw.f_name ^ "_th", def_expr) 
+  in
   let get_poly_indices case =
     (* TODO: find a minimal cover of all type variables *)
     List.mapi (fun i (_, t) -> i, t) case.args
     |> List.filter (fun (i, t) -> get_type_vars t <> [])
-    |> List.map fst in
+    |> List.map fst 
+  in
   let get_arg_types_expr func =
     let case1 = hd func.cases in
     let base_args_expr = mk_let ("_, args",
@@ -986,10 +1112,12 @@ let compile_rules db rules =
           func.fixed_args) in
       mk_let ("fixed_args", list_expr) in
     let e2 = App (Raw "map (fun i -> type_of (el i (fixed_args @ args)))", mk_int_list func.poly_indices) in
-    mk_let (func.arg_ty_name, chain_let [base_args_expr; fixed_args_expr; e2]) in
+    mk_let (func.arg_ty_name, chain_let [base_args_expr; fixed_args_expr; e2]) 
+  in
   let name_vars vars =
     (* TODO: consider types if names coincide *)
-    map (fun v -> v, "var_" ^ fst (dest_var v)) vars in
+    map (fun v -> v, "var_" ^ fst (dest_var v)) vars 
+  in
   let vars' = map (fun rule -> map (fun r -> r.fv) rule.rewrites |> flat) rules 
               |> flat |> setify in
   let vars = name_vars vars' in
@@ -1005,7 +1133,8 @@ let compile_rules db rules =
       th_name = th_name;
       rhs_tm = rhs;
     } in
-    case, abs in
+    case, abs 
+  in
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let base_args, body_tm = strip_gabs abs_tm in
     let fixed_args = frees abs_tm in
@@ -1018,11 +1147,13 @@ let compile_rules db rules =
       (* TODO: should be the same as the rhs of the corresponding abs_th;
                it is better to use this theorem here *)
       rhs_tm = body_tm;
-    } in
+    } 
+  in
   let all_cases abs (rule: db_rec) =
     List.fold_left (fun (abs, cases) rw ->
       let case, abs = get_case abs rw in
-      (abs, case :: cases)) (abs, []) rule.rewrites in
+      (abs, case :: cases)) (abs, []) rule.rewrites 
+  in
   let abs, fs = List.fold_left (fun (abs, fs) rule ->
     let abs, cases = all_cases abs rule in
     let f = {
@@ -1034,7 +1165,8 @@ let compile_rules db rules =
       extra = rule.extra;
       cases = cases;
     } in
-    abs, f :: fs) ((0, []), []) rules in
+    abs, f :: fs) ((0, []), []) rules 
+  in
   (* Add free variables from abstractions *)
   let vars' = vars' @ 
     flat (map (fun tm, _ ->
@@ -1137,8 +1269,8 @@ let compile_term db f_name tm =
     chain_let (tm_expr :: abs_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 
 
-let print_rules db fmt ?term rule_names =
-  let exprs' = map (compile_rules db o get_entries db) rule_names in
+let print_rules db fmt ?term rules =
+  let exprs' = map (compile_rules db) rules in
   let exprs =
     match term with
     | None -> exprs'
@@ -1147,14 +1279,23 @@ let print_rules db fmt ?term rule_names =
   Format.fprintf fmt "@[<v>%a;;@]@."
     (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
 
-let write_rules db ?(margin = 200) ?term fname rule_names =
+let write_rules db ?(margin = 200) ?term fname rules =
   let oc = open_out fname in
   try
     let fmt = Format.formatter_of_out_channel oc in
     Format.pp_set_margin fmt margin;
-    print_rules db fmt ?term rule_names;
+    print_rules db fmt ?term rules;
     Format.pp_print_flush fmt ();
     close_out oc
   with e ->
     close_out_noerr oc;
     raise e;;
+
+let write_rules_names db ?margin ?term fname names =
+  get_entries db names
+    |> List.map (fun r -> [r])
+    |> write_rules db ?margin ?term fname;;
+
+let write_rules_consts db ?margin ?term fname consts =
+  List.map (List.map (find_exact_entry db)) consts
+    |> write_rules db ?margin ?term fname;;
