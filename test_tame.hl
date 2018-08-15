@@ -38,10 +38,55 @@ let funpow_ALT = prove
     ASM_REWRITE_TAC[NOT_SUC; PRE; SUC_SUB1; o_DEF] THEN
     COND_CASES_TAC THEN REWRITE_TAC[ARITH_RULE `PRE n = n - 1`]);;
 
+let funpow_ALT2 = prove
+  (`funpow 0 f x = x
+    /\ funpow 1 f x = f x
+    /\ funpow 2 f x = f (f x)
+    /\ funpow 3 f x = f (f (f x))
+    /\ funpow 4 f x = f (f (f (f x)))
+    /\ funpow 5 f x = f (f (f (f (f x))))
+    /\ funpow n f x = 
+         if n > 5 then funpow (n - 6) f (f (f (f (f (f (f x))))))
+         else funpow n f x`,
+  REPLICATE_TAC 6 (CONJ_TAC THENL [
+    REPEAT (ONCE_REWRITE_TAC[funpow_ALT] THEN REWRITE_TAC[ARITH]); ALL_TAC]) THEN
+    COND_CASES_TAC THEN REWRITE_TAC[] THEN POP_ASSUM (LABEL_TAC "h") THEN
+    REPLICATE_TAC 6 (GEN_REWRITE_TAC LAND_CONV [funpow_ALT] THEN COND_CASES_TAC THENL [
+      POP_ASSUM MP_TAC THEN USE_THEN "h" MP_TAC THEN TRY ARITH_TAC;
+      ALL_TAC
+    ]) THEN
+    REPEAT (FIRST [AP_THM_TAC; AP_TERM_TAC]) THEN
+    REWRITE_TAC[ARITH_RULE `PRE n = n - 1`; ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
+
 let nth_DEF = define
  `nth (x :: xs) n =
   (if n = 0 then x
     else nth xs (n - 1))`;;
+
+let nth_ALT = prove
+  (`nth (a :: xs) 0 = a
+    /\ nth (a :: b :: xs) 1 = b
+    /\ nth (a :: b :: c :: xs) 2 = c
+    /\ nth (a :: b :: c :: d :: xs) 3 = d
+    /\ nth (a :: b :: c :: d :: e :: xs) 4 = e
+    /\ nth (a :: b :: c :: d :: e :: f :: xs) 5 = f
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: xs) 6 = g
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: xs) 7 = h
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: xs) 8 = i
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: xs) 9 = j
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) 10 = k
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n = 
+        if n > 10 then nth xs (n - 11) else nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n`,
+  REPLICATE_TAC 11 (CONJ_TAC THENL [REWRITE_TAC[nth_DEF; ARITH]; ALL_TAC]) THEN
+    COND_CASES_TAC THEN REWRITE_TAC[] THEN
+    POP_ASSUM (LABEL_TAC "h") THEN
+    REPEAT (ONCE_REWRITE_TAC[nth_DEF] THEN COND_CASES_TAC THENL [
+      POP_ASSUM MP_TAC THEN USE_THEN "h" MP_TAC THEN 
+        REWRITE_TAC[ARITH_RULE `n - a - b = n - (a + b)`; ARITH] THEN ARITH_TAC;
+      ALL_TAC
+    ]) THEN
+    REPEAT AP_TERM_TAC THEN
+    REWRITE_TAC[ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
 
 let fold_DEF = define
  `fold f l s =
@@ -92,6 +137,18 @@ let maps_DEF = define
   match xs with
   | [] -> []
   | (x :: xs) -> APPEND (f x) (maps f xs)`;;
+
+let maps_ALT = prove
+  (`maps f [] = []
+    /\ maps f [a] = f a
+    /\ maps f [a; b] = APPEND (f a) (f b)
+    /\ maps f [a; b; c] = APPEND (f a) (APPEND (f b) (f c))
+    /\ maps f [a; b; c; d] = APPEND (f a) (APPEND (f b) (APPEND (f c) (f d)))
+    /\ maps f [a; b; c; d; e] = APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (f e))))
+    /\ maps f (a :: b :: c :: d :: e :: g :: xs) = 
+      APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (APPEND (f g) (maps f xs))))))`,
+  REPEAT (CONJ_TAC THENL [REWRITE_TAC[maps_DEF; APPEND_NIL]; ALL_TAC]) THEN
+    REPEAT (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [maps_DEF] THEN REWRITE_TAC[]));;
 
 let foldl_DEF = define
  `foldl f a xs =
@@ -166,6 +223,28 @@ let count_DEF = define
     | [] -> 0
     | x :: xs -> if p x then 1 + count p xs else count p xs`;;
 
+let count_CASES = prove
+  (`!p h t. count p [] = 0
+    /\ count p (h :: t) = if p h then 1 + count p t else count p t`,
+  REPEAT STRIP_TAC THEN GEN_REWRITE_TAC LAND_CONV [count_DEF] THEN
+    REWRITE_TAC[]);;
+
+let bool_to_num_DEF = define
+  `bool_to_num T = 1 /\ bool_to_num F = 0`;;
+
+let count_ALT = prove
+  (`count p [] = 0
+    /\ count p [a] = bool_to_num (p a)
+    /\ count p [a; b] = bool_to_num (p a) + bool_to_num (p b)
+    /\ count p [a; b; c] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c)
+    /\ count p [a; b; c; d] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d)
+    /\ count p [a; b; c; d; e] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e)
+    /\ count p (a :: b :: c :: d :: e :: f :: xs) = 
+      bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f) + count p xs`,
+  REWRITE_TAC[count_CASES] THEN REPEAT CONJ_TAC THEN
+    REPEAT COND_CASES_TAC THEN REWRITE_TAC[bool_to_num_DEF] THEN
+    ARITH_TAC);;
+
 let hd_DEF = define
  `hd (x21 :: x22) = x21`;;
 
@@ -209,11 +288,53 @@ let map_DEF = define
   | [] -> []
   | (x21a :: x22) -> fi x21a :: map fi x22`;;
 
+let map_CASES = prove
+  (`map f [] = [] /\ map f (x :: xs) = f x :: map f xs`,
+  CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [map_DEF] THEN REWRITE_TAC[]);;
+
+let map_ALT = prove
+  (`map f [] = []
+    /\ map f [a] = [f a]
+    /\ map f [a; b] = [f a; f b]
+    /\ map f [a; b; c] = [f a; f b; f c]
+    /\ map f [a; b; c; d] = [f a; f b; f c; f d]
+    /\ map f [a; b; c; d; e] = [f a; f b; f c; f d; f e]
+    /\ map f [a; b; c; d; e; g] = [f a; f b; f c; f d; f e; f g]
+    /\ map f [a; b; c; d; e; g; h] = [f a; f b; f c; f d; f e; f g; f h]
+    /\ map f [a; b; c; d; e; g; h; i] = [f a; f b; f c; f d; f e; f g; f h; f i]
+    /\ map f [a; b; c; d; e; g; h; i; j] = [f a; f b; f c; f d; f e; f g; f h; f i; f j]
+    /\ map f [a; b; c; d; e; g; h; i; j; k] = [f a; f b; f c; f d; f e; f g; f h; f i; f j; f k]
+    /\ map f [a; b; c; d; e; g; h; i; j; k; l] = [f a; f b; f c; f d; f e; f g; f h; f i; f j; f k; f l]
+    /\ map f (a :: b :: c :: d :: e :: g :: h :: i :: j :: k :: l :: m :: xs) = 
+      (f a :: f b :: f c :: f d :: f e :: f g :: f h :: f i :: f j :: f k :: f l :: f m :: map f xs)`,
+  REWRITE_TAC[map_CASES]);;
+
 let pred_list_DEF = define
  `pred_list p xs =
   match xs with
   | [] -> T
   | (x :: xs) -> p x /\ pred_list p xs`;;
+
+let pred_list_CASES = prove
+  (`pred_list p [] = T /\ pred_list p (x :: xs) = (p x /\ pred_list p xs)`,
+  CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [pred_list_DEF] THEN REWRITE_TAC[]);;
+
+let pred_list_ALT = prove
+  (`pred_list p [] = T
+    /\ pred_list p [a] = p a
+    /\ pred_list p [a; b] = (p a /\ p b)
+    /\ pred_list p [a; b; c] = (p a /\ p b /\ p c)
+    /\ pred_list p [a; b; c; d] = (p a /\ p b /\ p c /\ p d)
+    /\ pred_list p [a; b; c; d; e] = (p a /\ p b /\ p c /\ p d /\ p e)
+    /\ pred_list p [a; b; c; d; e; g] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g)
+    /\ pred_list p [a; b; c; d; e; g; h] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h)
+    /\ pred_list p [a; b; c; d; e; g; h; i] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i)
+    /\ pred_list p [a; b; c; d; e; g; h; i; j] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j)
+    /\ pred_list p [a; b; c; d; e; g; h; i; j; k] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k)
+    /\ pred_list p [a; b; c; d; e; g; h; i; j; k; l] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k /\ p l)
+    /\ pred_list p (a :: b :: c :: d :: e :: g :: h :: i :: j :: k :: l :: m :: xs) = 
+      (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k /\ p l /\ p m /\ pred_list p xs)`,
+  REWRITE_TAC[pred_list_CASES]);;
 
 (* let pred_list_ALT = prove
   (`pred_list p xs =
@@ -405,12 +526,6 @@ let filter_CASES = prove
   (`!p h t. filter p [] = [] 
     /\ filter p (h :: t) = if p h then h :: filter p t else filter p t`,
   REPEAT STRIP_TAC THEN GEN_REWRITE_TAC LAND_CONV [filter_DEF] THEN
-    REWRITE_TAC[]);;
-
-let count_CASES = prove
-  (`!p h t. count p [] = 0
-    /\ count p (h :: t) = if p h then 1 + count p t else count p t`,
-  REPEAT STRIP_TAC THEN GEN_REWRITE_TAC LAND_CONV [count_DEF] THEN
     REWRITE_TAC[]);;
 
 let gen_length_ADD = prove
@@ -1452,11 +1567,11 @@ let rules = [
     `is_none:((num,((num)list)list)tries)option->bool`;
     `is_none:((real)list#(num,((num)list)list)tries)option->bool`;
   ];
-  "funpow_ALT", funpow_ALT, [
+  "funpow_ALT2", funpow_ALT2, [
     `funpow:num->(num->num)->num->num`;
     `funpow:num->(((num)list)list->((num)list)list)->((num)list)list->((num)list)list`;
   ];
-  "nth_DEF", nth_DEF, [
+  "nth_ALT", nth_ALT, [
     `nth:((face)list)list->num->(face)list`;
     `nth:(num)list->num->num`;
   ];
@@ -1478,7 +1593,7 @@ let rules = [
   "last_DEF", last_DEF, [
     `last:(num)list->num`;
   ];
-  "maps_DEF", maps_DEF, [
+  "maps_ALT", maps_ALT, [
     `maps:((num)list->((num)list)list)->((num)list)list->((num)list)list`;
     `maps:(face->(num)list)->(face)list->(num)list`;
     `maps:(num->(graph)list)->(num)list->(graph)list`
@@ -1508,7 +1623,8 @@ let rules = [
   "rotate_ALT", rotate_ALT, [
     `rotate:num->(num)list->(num)list`
   ];
-  "count_DEF", count_DEF, [
+  "bool_to_num_DEF", bool_to_num_DEF, [];
+  "count_ALT", count_ALT, [
     `count:(face->bool)->(face)list->num`;
   ];
   "hd_DEF", hd_DEF, [
@@ -1527,7 +1643,7 @@ let rules = [
   "remove1_DEF", remove1_DEF, [
     `remove1:(num)list->((num)list)list->((num)list)list`;
   ];
-  "map_DEF", map_DEF, [
+  "map_ALT", map_ALT, [
     `map:(face->num)->(face)list->(num)list`;
     `map:(num->num)->(num)list->(num)list`;
     `map:((face)list->(face)list)->((face)list)list->((face)list)list`;
@@ -1537,7 +1653,7 @@ let rules = [
     `map:(((num)option)list->graph)->(((num)option)list)list->(graph)list`;
     `map:(face->(num)list)->(face)list->((num)list)list`;
   ];
-  "pred_list_DEF", pred_list_DEF, [
+  "pred_list_ALT", pred_list_ALT, [
     `pred_list:(face->bool)->(face)list->bool`;
     `pred_list:(num->bool)->(num)list->bool`;
     `pred_list:(num#num->bool)->(num#num)list->bool`;
@@ -1891,6 +2007,9 @@ let test n f a =
 (* 18.631s with custom types (COND, f_EQ still use INST_TYPE) *)
 (* 17.927s with custom types (including COND but without f_EQ) *)
 (* 17.995s with custom types everywhere *)
+(* 14.663s with nth_ALT with 10 cases *)
+(* 14.538s with funpow_ALT2 with 5 cases *)
+(* 14.487s with maps_ALT, count_ALT, map_ALT, pred_list_ALT *)
 reset_all_counters();;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
 
@@ -1900,9 +2019,3 @@ setify_types !eq_types;;
 get_all_counters();;
 get_counter "f_gen_length";;
 Hashtbl.fold (fun k v r -> k :: r) (create_memo "f_size_list") [];;
-
-let memo = Hashtbl.create 10000;;
-Hashtbl.add memo `1` 1;;
-Hashtbl.add memo `1` 2;;
-Hashtbl.find memo `1`;;
-
