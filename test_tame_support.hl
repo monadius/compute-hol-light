@@ -1,4 +1,29 @@
-loadt "default_db.hl";;
+needs "arith_options.hl";;
+Arith_options.base := 100;;
+Arith_options.cached := false;;
+
+needs "new_arith/nat_arith.hl";;
+let f_SUC = Nat_arith.nsuc;;
+let f_PRE = Nat_arith.npre;;
+let f_ADD = Nat_arith.nadd;;
+let f_SUB = Nat_arith.nsub;;
+let f_MUL = Nat_arith.nmul;;
+let f_LE tm1 tm2 = fst (Nat_arith.nle tm1 tm2);;
+let f_LT tm1 tm2 = fst (Nat_arith.nlt tm1 tm2);;
+let f_MIN = Nat_arith.nmin;;
+let f_MAX = Nat_arith.nmax;;
+
+let f_EQ_num tm1 tm2 = fst (Nat_arith.neq tm1 tm2);;
+
+let numeral = Nat_arith.replace_numerals;;
+
+let standardize = Misc_vars.standardize;;
+let standardize_tm = Misc_vars.standardize_tm;;
+
+needs "compiled_eval.hl";;
+
+let () =
+  add_extra_split_rule Nat_arith.REPLACE_NUMERALS;;
 
 let tame_default_db () =
   let db = empty_db() in
@@ -10,6 +35,36 @@ let tame_default_db () =
     `~`; (*`/\`; `\/`*)
   ];
   db;;
+
+let f_NOT =
+  let NOT_CLAUSES_case1, NOT_CLAUSES_case2, NOT_CLAUSES_case3 =
+    match split_thm NOT_CLAUSES with
+    | [th1; th2; th3] -> (th1, th2, th3)
+    | _ -> failwith "error"
+     in
+  let var_t = standardize_tm (mk_var ("t", `:bool`)) in
+  let rec f_NOT tm1 =
+    try
+      match tm1 with
+      | Comb (Const ("~", _), t) -> INST [t, var_t] NOT_CLAUSES_case1
+      | Const ("T", _) -> NOT_CLAUSES_case2
+      | Const ("F", _) -> NOT_CLAUSES_case3
+      | _ -> failwith "No match: f_NOT"
+    with
+    | Failure msg -> eval_error msg "f_NOT" [tm1]
+    | Eval_error err -> eval_error_propagate err "f_NOT" [tm1]
+     in
+  f_NOT;;
+
+let true_tm = standardize_tm `T`;;
+let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
+let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
+
+let p_var_bool = standardize_tm `P: bool`;;
+let T_AND = (standardize o TAUT) `T /\ P <=> P` and
+    F_AND = (standardize o TAUT) `F /\ P <=> F` and
+    T_OR = (standardize o TAUT) `T \/ P <=> T` and
+    F_OR = (standardize o TAUT) `F \/ P <=> P`;;
 
 let COND_face_T = (standardize o INST_TYPE[`:face`, aty]) COND_T and
     COND_face_F = (standardize o INST_TYPE[`:face`, aty]) COND_F and
@@ -46,9 +101,9 @@ let COND_face_T = (standardize o INST_TYPE[`:face`, aty]) COND_T and
     COND_num_num_list_list_tries_T = (standardize o INST_TYPE[`:(num,((num)list)list)tries`, aty]) COND_T and
     COND_num_num_list_list_tries_F = (standardize o INST_TYPE[`:(num,((num)list)list)tries`, aty]) COND_F;;
 
-let f_EQ_num =
+(* let f_EQ_num =
   let const = standardize_tm `(=):num->num->bool` in
-  fun t1 t2 -> NUM_EQ_CONV (mk_comb (mk_comb (const, t1), t2));;
+  fun t1 t2 -> NUM_EQ_CONV (mk_comb (mk_comb (const, t1), t2));; *)
 
 let f_EQ_num_list =
   let refl_eq = (standardize o prove)(`xs:(num)list = xs <=> T`, REWRITE_TAC[]) in

@@ -152,17 +152,26 @@ let eq_intro thm =
 let extra_rewrites =
   (* let and_th = MESON[] `!P Q. P /\ Q <=> if P then Q else F` in
   let or_th = MESON[] `!P Q. P \/ Q <=> if P then T else Q` in *)
-  let not_th = MESON[] `!P X Y. (if ~P then X else Y) <=> (if P then Y else X)` in
-  fun th -> PURE_REWRITE_RULE[(*and_th; or_th;*) not_th] th;;
+  let not_cond_th = MESON[] `!P X Y. (if ~P then X else Y) <=> (if P then Y else X)` in
+  fun th -> PURE_REWRITE_RULE[(*and_th; or_th;*) not_cond_th; GT; GE] th;;
+
+let split_extra_rules = ref ([]: (thm -> thm)list);;
+
+let add_extra_split_rule rule =
+  if List.memq rule !split_extra_rules then ()
+  else
+    split_extra_rules := !split_extra_rules @ [rule];;
 
 let split_thm th =
   let split th =
     let ths = try eliminate_top_match th with _ -> [th] in
     List.map eq_intro ths in
+  let extra_rules = rev_itlist (o) !split_extra_rules I in
   BODY_CONJUNCTS th 
     |> List.map split 
     |> flat
-    |> List.map extra_rewrites;;
+    |> List.map extra_rewrites
+    |> List.map extra_rules;;
 
 let inst_type_thms tm ths =
   let inst_type th =
