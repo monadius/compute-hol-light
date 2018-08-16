@@ -3,7 +3,7 @@ needs "tame_defs_unrolled.hl";;
 loadt "test_tame_support.hl";;
 
 let rules = [
-  "APPEND", APPEND, [
+  "APPEND_UNROLL7", APPEND_UNROLL7, [
     `APPEND:(num)list->(num)list->(num)list`;
     `APPEND:(face)list->(face)list->(face)list`;
     `APPEND:((face)list)list->((face)list)list->((face)list)list`;
@@ -350,6 +350,7 @@ loadt "out.hl";;
 (* 14.487s with maps_ALT, count_ALT, map_ALT, pred_list_ALT *)
 (* 9.915s with fast arithmetic *)
 (* 9.859s with fast arithmetic + standardize *)
+(* 9.797s with APPEND_UNROLL7 *)
 reset_all_counters();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;

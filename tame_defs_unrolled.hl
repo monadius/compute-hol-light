@@ -1,5 +1,18 @@
 needs "tame_defs.hl";;
 
+let APPEND_UNROLL7 = prove
+  (`APPEND [] xs = xs
+    /\ APPEND [a] xs = a :: xs
+    /\ APPEND [a; b] xs = a :: b :: xs
+    /\ APPEND [a; b; c] xs = a :: b :: c :: xs
+    /\ APPEND [a; b; c; d] xs = a :: b :: c :: d :: xs
+    /\ APPEND [a; b; c; d; e] xs = a :: b :: c :: d :: e :: xs
+    /\ APPEND [a; b; c; d; e; f] xs = a :: b :: c :: d :: e :: f :: xs
+    /\ APPEND [a; b; c; d; e; f; g] xs = a :: b :: c :: d :: e :: f :: g :: xs
+    /\ APPEND (a :: b :: c :: d :: e :: f :: g :: h :: ys) xs =
+        a :: b :: c :: d :: e :: f :: g :: h :: APPEND ys xs`,
+  REWRITE_TAC[APPEND]);;
+
 let funpow_UNROLL5 = prove
   (`funpow 0 f x = x
     /\ funpow 1 f x = f x
