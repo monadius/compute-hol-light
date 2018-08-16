@@ -1,6 +1,6 @@
 needs "tame_defs.hl";;
 
-let APPEND_UNROLL7 = prove
+let APPEND_UNROLL8 = prove
   (`APPEND [] xs = xs
     /\ APPEND [a] xs = a :: xs
     /\ APPEND [a; b] xs = a :: b :: xs
@@ -9,8 +9,9 @@ let APPEND_UNROLL7 = prove
     /\ APPEND [a; b; c; d; e] xs = a :: b :: c :: d :: e :: xs
     /\ APPEND [a; b; c; d; e; f] xs = a :: b :: c :: d :: e :: f :: xs
     /\ APPEND [a; b; c; d; e; f; g] xs = a :: b :: c :: d :: e :: f :: g :: xs
-    /\ APPEND (a :: b :: c :: d :: e :: f :: g :: h :: ys) xs =
-        a :: b :: c :: d :: e :: f :: g :: h :: APPEND ys xs`,
+    /\ APPEND [a; b; c; d; e; f; g; h] xs = a :: b :: c :: d :: e :: f :: g :: h :: xs
+    /\ APPEND (a :: b :: c :: d :: e :: f :: g :: h :: i :: ys) xs =
+        a :: b :: c :: d :: e :: f :: g :: h :: i :: APPEND ys xs`,
   REWRITE_TAC[APPEND]);;
 
 let funpow_UNROLL5 = prove
@@ -33,7 +34,7 @@ let funpow_UNROLL5 = prove
     REPEAT (FIRST [AP_THM_TAC; AP_TERM_TAC]) THEN
     REWRITE_TAC[ARITH_RULE `PRE n = n - 1`; ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
 
-let nth_UNROLL10 = prove
+let nth_UNROLL15 = prove
   (`nth (a :: xs) 0 = a
     /\ nth (a :: b :: xs) 1 = b
     /\ nth (a :: b :: c :: xs) 2 = c
@@ -45,9 +46,14 @@ let nth_UNROLL10 = prove
     /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: xs) 8 = i
     /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: xs) 9 = j
     /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) 10 = k
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n = 
-        if n > 10 then nth xs (n - 11) else nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n`,
-  REPLICATE_TAC 11 (CONJ_TAC THENL [REWRITE_TAC[nth_DEF; ARITH]; ALL_TAC]) THEN
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: xs) 11 = l
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: xs) 12 = m
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: n :: xs) 13 = n
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: n :: p :: xs) 14 = p
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: n :: p :: q :: xs) 15 = q
+    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: n :: p :: q :: xs) nn = 
+        if nn > 15 then nth xs (nn - 16) else nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: l :: m :: n :: p :: q :: xs) nn`,
+  REPLICATE_TAC 16 (CONJ_TAC THENL [REWRITE_TAC[nth_DEF; ARITH]; ALL_TAC]) THEN
     COND_CASES_TAC THEN REWRITE_TAC[] THEN
     POP_ASSUM (LABEL_TAC "h") THEN
     REPEAT (ONCE_REWRITE_TAC[nth_DEF] THEN COND_CASES_TAC THENL [
@@ -58,27 +64,31 @@ let nth_UNROLL10 = prove
     REPEAT AP_TERM_TAC THEN
     REWRITE_TAC[ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
 
-let maps_UNROLL5 = prove
+let maps_UNROLL7 = prove
   (`maps f [] = []
     /\ maps f [a] = f a
     /\ maps f [a; b] = APPEND (f a) (f b)
     /\ maps f [a; b; c] = APPEND (f a) (APPEND (f b) (f c))
     /\ maps f [a; b; c; d] = APPEND (f a) (APPEND (f b) (APPEND (f c) (f d)))
     /\ maps f [a; b; c; d; e] = APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (f e))))
-    /\ maps f (a :: b :: c :: d :: e :: g :: xs) = 
-      APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (APPEND (f g) (maps f xs))))))`,
+    /\ maps f [a; b; c; d; e; g] = APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (f g)))))
+    /\ maps f [a; b; c; d; e; g; h] = APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (APPEND (f g) (f h))))))
+    /\ maps f (a :: b :: c :: d :: e :: g :: h :: i :: xs) = 
+      APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (APPEND (f g) (APPEND (f h) (APPEND (f i) (maps f xs))))))))`,
   REPEAT (CONJ_TAC THENL [REWRITE_TAC[maps_DEF; APPEND_NIL]; ALL_TAC]) THEN
     REPEAT (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [maps_DEF] THEN REWRITE_TAC[]));;
 
-let count_UNROLL5 = prove
+let count_UNROLL7 = prove
   (`count p [] = 0
     /\ count p [a] = bool_to_num (p a)
     /\ count p [a; b] = bool_to_num (p a) + bool_to_num (p b)
     /\ count p [a; b; c] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c)
     /\ count p [a; b; c; d] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d)
     /\ count p [a; b; c; d; e] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e)
-    /\ count p (a :: b :: c :: d :: e :: f :: xs) = 
-      bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f) + count p xs`,
+    /\ count p [a; b; c; d; e; f] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f)
+    /\ count p [a; b; c; d; e; f; g] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f) + bool_to_num (p g)
+    /\ count p (a :: b :: c :: d :: e :: f :: g :: h :: xs) = 
+      bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f) + bool_to_num (p g) + bool_to_num (p h) + count p xs`,
   REWRITE_TAC[count_CASES] THEN REPEAT CONJ_TAC THEN
     REPEAT COND_CASES_TAC THEN REWRITE_TAC[bool_to_num_DEF] THEN
     ARITH_TAC);;

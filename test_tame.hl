@@ -3,7 +3,7 @@ needs "tame_defs_unrolled.hl";;
 loadt "test_tame_support.hl";;
 
 let rules = [
-  "APPEND_UNROLL7", APPEND_UNROLL7, [
+  "APPEND_UNROLL8", APPEND_UNROLL8, [
     `APPEND:(num)list->(num)list->(num)list`;
     `APPEND:(face)list->(face)list->(face)list`;
     `APPEND:((face)list)list->((face)list)list->((face)list)list`;
@@ -29,7 +29,7 @@ let rules = [
     `funpow:num->(num->num)->num->num`;
     `funpow:num->(((num)list)list->((num)list)list)->((num)list)list->((num)list)list`;
   ];
-  "nth_UNROLL10", nth_UNROLL10, [
+  "nth_UNROLL15", nth_UNROLL15, [
     `nth:((face)list)list->num->(face)list`;
     `nth:(num)list->num->num`;
   ];
@@ -51,7 +51,7 @@ let rules = [
   "last_DEF", last_DEF, [
     `last:(num)list->num`;
   ];
-  "maps_UNROLL5", maps_UNROLL5, [
+  "maps_UNROLL7", maps_UNROLL7, [
     `maps:((num)list->((num)list)list)->((num)list)list->((num)list)list`;
     `maps:(face->(num)list)->(face)list->(num)list`;
     `maps:(num->(graph)list)->(num)list->(graph)list`
@@ -82,7 +82,7 @@ let rules = [
     `rotate:num->(num)list->(num)list`
   ];
   "bool_to_num_DEF", bool_to_num_DEF, [];
-  "count_UNROLL5", count_UNROLL5, [
+  "count_UNROLL7", count_UNROLL7, [
     `count:(face->bool)->(face)list->num`;
   ];
   "hd_DEF", hd_DEF, [
@@ -330,6 +330,9 @@ let const_names =
     name) rules;;
 
 let db = add_thms (tame_default_db ()) rules;;
+set_extra_for_names db Extra_arg_list [
+  "APPEND"; "funpow"; "nth"; "maps"; "count"; "map"; "pred_list"; "size_list";
+];;
 let () =
   generate_call_counters := true;
   write_rules_names db "out.hl" const_names;;
@@ -350,8 +353,10 @@ loadt "out.hl";;
 (* 14.487s with maps_ALT, count_ALT, map_ALT, pred_list_ALT *)
 (* 9.915s with fast arithmetic *)
 (* 9.859s with fast arithmetic + standardize *)
-(* 9.797s with APPEND_UNROLL7 *)
+(* 9.797s with APPEND_UNROLL8 *)
+(* 9.653s with nth_UNROLL15, maps_UNROLL7, count_UNROLL7 *)
 reset_all_counters();;
+clear_arg_lists();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
 
@@ -361,6 +366,20 @@ setify_types !eq_types;;
 get_all_counters();;
 get_counter "f_gen_length";;
 Hashtbl.fold (fun k v r -> k :: r) (create_memo "f_size_list") [];;
+
+(* nth -> unroll up to 15 *)
+(* maps -> up to 7 *)
+(* count -> up to 7 *)
+
+let args = lazy !(create_arg_list "f_nth_num");;
+let n = Lazy.force args |> length;;
+Lazy.force args |> map (length o dest_list o el 0) |> freqs;;
+Lazy.force args |> map (Nat_arith.dest_nat o el 1) |> freqs;;
+Lazy.force args |> freqs;;
+let t = Lazy.force args |> freqs |> length;;
+float (n - t) /. float n;;
+
+Nat_arith.reset_cache();;
 
 setify !cond_types |>
   map (fun ty -> ty, fix_identifier @@ string_of_type ty);;
