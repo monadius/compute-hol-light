@@ -36,55 +36,10 @@ let funpow_ALT = prove
     ASM_REWRITE_TAC[NOT_SUC; PRE; SUC_SUB1; o_DEF] THEN
     COND_CASES_TAC THEN REWRITE_TAC[ARITH_RULE `PRE n = n - 1`]);;
 
-let funpow_ALT2 = prove
-  (`funpow 0 f x = x
-    /\ funpow 1 f x = f x
-    /\ funpow 2 f x = f (f x)
-    /\ funpow 3 f x = f (f (f x))
-    /\ funpow 4 f x = f (f (f (f x)))
-    /\ funpow 5 f x = f (f (f (f (f x))))
-    /\ funpow n f x = 
-         if n > 5 then funpow (n - 6) f (f (f (f (f (f (f x))))))
-         else funpow n f x`,
-  REPLICATE_TAC 6 (CONJ_TAC THENL [
-    REPEAT (ONCE_REWRITE_TAC[funpow_ALT] THEN REWRITE_TAC[ARITH]); ALL_TAC]) THEN
-    COND_CASES_TAC THEN REWRITE_TAC[] THEN POP_ASSUM (LABEL_TAC "h") THEN
-    REPLICATE_TAC 6 (GEN_REWRITE_TAC LAND_CONV [funpow_ALT] THEN COND_CASES_TAC THENL [
-      POP_ASSUM MP_TAC THEN USE_THEN "h" MP_TAC THEN TRY ARITH_TAC;
-      ALL_TAC
-    ]) THEN
-    REPEAT (FIRST [AP_THM_TAC; AP_TERM_TAC]) THEN
-    REWRITE_TAC[ARITH_RULE `PRE n = n - 1`; ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
-
 let nth_DEF = define
  `nth (x :: xs) n =
   (if n = 0 then x
     else nth xs (n - 1))`;;
-
-let nth_ALT = prove
-  (`nth (a :: xs) 0 = a
-    /\ nth (a :: b :: xs) 1 = b
-    /\ nth (a :: b :: c :: xs) 2 = c
-    /\ nth (a :: b :: c :: d :: xs) 3 = d
-    /\ nth (a :: b :: c :: d :: e :: xs) 4 = e
-    /\ nth (a :: b :: c :: d :: e :: f :: xs) 5 = f
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: xs) 6 = g
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: xs) 7 = h
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: xs) 8 = i
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: xs) 9 = j
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) 10 = k
-    /\ nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n = 
-        if n > 10 then nth xs (n - 11) else nth (a :: b :: c :: d :: e :: f :: g :: h :: i :: j :: k :: xs) n`,
-  REPLICATE_TAC 11 (CONJ_TAC THENL [REWRITE_TAC[nth_DEF; ARITH]; ALL_TAC]) THEN
-    COND_CASES_TAC THEN REWRITE_TAC[] THEN
-    POP_ASSUM (LABEL_TAC "h") THEN
-    REPEAT (ONCE_REWRITE_TAC[nth_DEF] THEN COND_CASES_TAC THENL [
-      POP_ASSUM MP_TAC THEN USE_THEN "h" MP_TAC THEN 
-        REWRITE_TAC[ARITH_RULE `n - a - b = n - (a + b)`; ARITH] THEN ARITH_TAC;
-      ALL_TAC
-    ]) THEN
-    REPEAT AP_TERM_TAC THEN
-    REWRITE_TAC[ARITH_RULE `n - a - b = n - (a + b)`; ARITH]);;
 
 let fold_DEF = define
  `fold f l s =
@@ -136,18 +91,6 @@ let maps_DEF = define
   | [] -> []
   | (x :: xs) -> APPEND (f x) (maps f xs)`;;
 
-let maps_ALT = prove
-  (`maps f [] = []
-    /\ maps f [a] = f a
-    /\ maps f [a; b] = APPEND (f a) (f b)
-    /\ maps f [a; b; c] = APPEND (f a) (APPEND (f b) (f c))
-    /\ maps f [a; b; c; d] = APPEND (f a) (APPEND (f b) (APPEND (f c) (f d)))
-    /\ maps f [a; b; c; d; e] = APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (f e))))
-    /\ maps f (a :: b :: c :: d :: e :: g :: xs) = 
-      APPEND (f a) (APPEND (f b) (APPEND (f c) (APPEND (f d) (APPEND (f e) (APPEND (f g) (maps f xs))))))`,
-  REPEAT (CONJ_TAC THENL [REWRITE_TAC[maps_DEF; APPEND_NIL]; ALL_TAC]) THEN
-    REPEAT (GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [maps_DEF] THEN REWRITE_TAC[]));;
-
 let foldl_DEF = define
  `foldl f a xs =
   match xs with
@@ -182,14 +125,6 @@ let member_DEF = define
   match xs with
   | [] -> F
   | (x :: xs) -> (=) x y \/ member xs y`;;
-
-(* let member_ALT = prove
-  (`member xs (y:A) =
-    match xs with
-    | [] -> F
-    | (x :: xs) -> if x = y then T else member xs y`,
-  GEN_REWRITE_TAC LAND_CONV [member_DEF] THEN
-    ASM_REWRITE_TAC[MESON[] `!x y xs. x = (y:A) \/ member xs y <=> if x = y then T else member xs y`]);; *)
 
 let rotate1_DEF = define
  `rotate1 xs =
@@ -230,19 +165,6 @@ let count_CASES = prove
 let bool_to_num_DEF = define
   `bool_to_num T = 1 /\ bool_to_num F = 0`;;
 
-let count_ALT = prove
-  (`count p [] = 0
-    /\ count p [a] = bool_to_num (p a)
-    /\ count p [a; b] = bool_to_num (p a) + bool_to_num (p b)
-    /\ count p [a; b; c] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c)
-    /\ count p [a; b; c; d] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d)
-    /\ count p [a; b; c; d; e] = bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e)
-    /\ count p (a :: b :: c :: d :: e :: f :: xs) = 
-      bool_to_num (p a) + bool_to_num (p b) + bool_to_num (p c) + bool_to_num (p d) + bool_to_num (p e) + bool_to_num (p f) + count p xs`,
-  REWRITE_TAC[count_CASES] THEN REPEAT CONJ_TAC THEN
-    REPEAT COND_CASES_TAC THEN REWRITE_TAC[bool_to_num_DEF] THEN
-    ARITH_TAC);;
-
 let hd_DEF = define
  `hd (x21 :: x22) = x21`;;
 
@@ -258,14 +180,6 @@ let list_ex_DEF = define
   | [] -> F
   | (x :: xs) -> p x \/ list_ex p xs`;;
 
-(* let list_ex_ALT = prove
-  (`list_ex p xs =
-      match xs with
-      | [] -> F
-      | ((x:A) :: xs) -> if p x then T else list_ex p xs`,
-  GEN_REWRITE_TAC LAND_CONV [list_ex_DEF] THEN
-    ASM_REWRITE_TAC[MESON[] `!p (x:A) xs. p x \/ list_ex p xs <=> if p x then T else list_ex p xs`]);; *)
-  
 let remdups_DEF = define
  `remdups xs =
   match xs with
@@ -290,23 +204,6 @@ let map_CASES = prove
   (`map f [] = [] /\ map f (x :: xs) = f x :: map f xs`,
   CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [map_DEF] THEN REWRITE_TAC[]);;
 
-let map_ALT = prove
-  (`map f [] = []
-    /\ map f [a] = [f a]
-    /\ map f [a; b] = [f a; f b]
-    /\ map f [a; b; c] = [f a; f b; f c]
-    /\ map f [a; b; c; d] = [f a; f b; f c; f d]
-    /\ map f [a; b; c; d; e] = [f a; f b; f c; f d; f e]
-    /\ map f [a; b; c; d; e; g] = [f a; f b; f c; f d; f e; f g]
-    /\ map f [a; b; c; d; e; g; h] = [f a; f b; f c; f d; f e; f g; f h]
-    /\ map f [a; b; c; d; e; g; h; i] = [f a; f b; f c; f d; f e; f g; f h; f i]
-    /\ map f [a; b; c; d; e; g; h; i; j] = [f a; f b; f c; f d; f e; f g; f h; f i; f j]
-    /\ map f [a; b; c; d; e; g; h; i; j; k] = [f a; f b; f c; f d; f e; f g; f h; f i; f j; f k]
-    /\ map f [a; b; c; d; e; g; h; i; j; k; l] = [f a; f b; f c; f d; f e; f g; f h; f i; f j; f k; f l]
-    /\ map f (a :: b :: c :: d :: e :: g :: h :: i :: j :: k :: l :: m :: xs) = 
-      (f a :: f b :: f c :: f d :: f e :: f g :: f h :: f i :: f j :: f k :: f l :: f m :: map f xs)`,
-  REWRITE_TAC[map_CASES]);;
-
 let pred_list_DEF = define
  `pred_list p xs =
   match xs with
@@ -316,31 +213,6 @@ let pred_list_DEF = define
 let pred_list_CASES = prove
   (`pred_list p [] = T /\ pred_list p (x :: xs) = (p x /\ pred_list p xs)`,
   CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [pred_list_DEF] THEN REWRITE_TAC[]);;
-
-let pred_list_ALT = prove
-  (`pred_list p [] = T
-    /\ pred_list p [a] = p a
-    /\ pred_list p [a; b] = (p a /\ p b)
-    /\ pred_list p [a; b; c] = (p a /\ p b /\ p c)
-    /\ pred_list p [a; b; c; d] = (p a /\ p b /\ p c /\ p d)
-    /\ pred_list p [a; b; c; d; e] = (p a /\ p b /\ p c /\ p d /\ p e)
-    /\ pred_list p [a; b; c; d; e; g] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g)
-    /\ pred_list p [a; b; c; d; e; g; h] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h)
-    /\ pred_list p [a; b; c; d; e; g; h; i] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i)
-    /\ pred_list p [a; b; c; d; e; g; h; i; j] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j)
-    /\ pred_list p [a; b; c; d; e; g; h; i; j; k] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k)
-    /\ pred_list p [a; b; c; d; e; g; h; i; j; k; l] = (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k /\ p l)
-    /\ pred_list p (a :: b :: c :: d :: e :: g :: h :: i :: j :: k :: l :: m :: xs) = 
-      (p a /\ p b /\ p c /\ p d /\ p e /\ p g /\ p h /\ p i /\ p j /\ p k /\ p l /\ p m /\ pred_list p xs)`,
-  REWRITE_TAC[pred_list_CASES]);;
-
-(* let pred_list_ALT = prove
-  (`pred_list p xs =
-      match xs with
-      | [] -> T
-      | ((x:A) :: xs) -> if p x then pred_list p xs else F`,
-  GEN_REWRITE_TAC LAND_CONV [pred_list_DEF] THEN
-    ASM_REWRITE_TAC[MESON[] `!p (x:A) xs. p x /\ pred_list p xs <=> if p x then pred_list p xs else F`]);; *)
 
 let replicate_DEF = define
  `replicate n x =
@@ -397,13 +269,6 @@ let all_interval_nat_DEF =
          j <= i \/ p i /\ all_interval_nat p (SUC i) j`,
         GEN_REWRITE_TAC LAND_CONV [def] THEN MESON_TAC[]);;
 
-(* let all_interval_nat_ALT = prove
-  (`all_interval_nat p i j = 
-      if j <= i then T
-      else if p i then all_interval_nat p (SUC i) j 
-      else F`,
-  GEN_REWRITE_TAC LAND_CONV [all_interval_nat_DEF] THEN MESON_TAC[]);; *)
-
 let gen_length_CASES = prove
   (`!n h t. gen_length n [] = n /\ gen_length n (h :: t) = gen_length (SUC n) t`,
   REPEAT STRIP_TAC THEN GEN_REWRITE_TAC LAND_CONV [gen_length_DEF] THEN
@@ -417,37 +282,6 @@ let gen_length_LENGTH = prove
 
 let size_list_DEF = define
  `size_list x = gen_length 0 x`;;
-
-let size_list_ALT = prove
-  (`size_list ([]:(A)list) = 0
-    /\ size_list [a:A] = 1
-    /\ size_list [a:A; b] = 2
-    /\ size_list [a:A; b; c] = 3
-    /\ size_list [a:A; b; c; d] = 4
-    /\ size_list [a:A; b; c; d; e] = 5
-    /\ size_list [a:A; b; c; d; e; f] = 6
-    /\ size_list [a:A; b; c; d; e; f; g] = 7
-    /\ size_list [a:A; b; c; d; e; f; g; h] = 8
-    /\ size_list [a:A; b; c; d; e; f; g; h; i] = 9
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j] = 10
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j; k] = 11
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j; k; l] = 12
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j; k; l; m] = 13
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j; k; l; m; n] = 14
-    /\ size_list [a:A; b; c; d; e; f; g; h; i; j; k; l; m; n; p] = 15
-    /\ size_list ((a:A)::b::c::d::e::f::g::h::i::j::k::l::m::n::p::q::rest) = gen_length 16 rest`,
-  REWRITE_TAC[size_list_DEF; gen_length_LENGTH; LENGTH] THEN ARITH_TAC);;
-
-let size_list_ALT5 = prove
-  (`size_list ([]:(A)list) = 0
-    /\ size_list [a:A] = 1
-    /\ size_list [a:A; b] = 2
-    /\ size_list [a:A; b; c] = 3
-    /\ size_list [a:A; b; c; d] = 4
-    /\ size_list [a:A; b; c; d; e] = 5
-    /\ size_list ((a:A)::b::c::d::e::f::rest) = gen_length 6 rest`,
-  REWRITE_TAC[size_list_DEF; gen_length_LENGTH; LENGTH] THEN ARITH_TAC);;
-
 
 let fst_DEF = define
  `fst (x1, x2) = x1`;;

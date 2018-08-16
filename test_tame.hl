@@ -1,4 +1,5 @@
 needs "tame_defs.hl";;
+needs "tame_defs_unrolled.hl";;
 loadt "test_tame_support.hl";;
 
 let rules = [
@@ -24,11 +25,11 @@ let rules = [
     `is_none:((num,((num)list)list)tries)option->bool`;
     `is_none:((real)list#(num,((num)list)list)tries)option->bool`;
   ];
-  "funpow_ALT2", funpow_ALT2, [
+  "funpow_UNROLL5", funpow_UNROLL5, [
     `funpow:num->(num->num)->num->num`;
     `funpow:num->(((num)list)list->((num)list)list)->((num)list)list->((num)list)list`;
   ];
-  "nth_ALT", nth_ALT, [
+  "nth_UNROLL10", nth_UNROLL10, [
     `nth:((face)list)list->num->(face)list`;
     `nth:(num)list->num->num`;
   ];
@@ -50,7 +51,7 @@ let rules = [
   "last_DEF", last_DEF, [
     `last:(num)list->num`;
   ];
-  "maps_ALT", maps_ALT, [
+  "maps_UNROLL5", maps_UNROLL5, [
     `maps:((num)list->((num)list)list)->((num)list)list->((num)list)list`;
     `maps:(face->(num)list)->(face)list->(num)list`;
     `maps:(num->(graph)list)->(num)list->(graph)list`
@@ -81,7 +82,7 @@ let rules = [
     `rotate:num->(num)list->(num)list`
   ];
   "bool_to_num_DEF", bool_to_num_DEF, [];
-  "count_ALT", count_ALT, [
+  "count_UNROLL5", count_UNROLL5, [
     `count:(face->bool)->(face)list->num`;
   ];
   "hd_DEF", hd_DEF, [
@@ -100,7 +101,7 @@ let rules = [
   "remove1_DEF", remove1_DEF, [
     `remove1:(num)list->((num)list)list->((num)list)list`;
   ];
-  "map_ALT", map_ALT, [
+  "map_UNROLL11", map_UNROLL11, [
     `map:(face->num)->(face)list->(num)list`;
     `map:(num->num)->(num)list->(num)list`;
     `map:((face)list->(face)list)->((face)list)list->((face)list)list`;
@@ -110,7 +111,7 @@ let rules = [
     `map:(((num)option)list->graph)->(((num)option)list)list->(graph)list`;
     `map:(face->(num)list)->(face)list->((num)list)list`;
   ];
-  "pred_list_ALT", pred_list_ALT, [
+  "pred_list_UNROLL11", pred_list_UNROLL11, [
     `pred_list:(face->bool)->(face)list->bool`;
     `pred_list:(num->bool)->(num)list->bool`;
     `pred_list:(num#num->bool)->(num#num)list->bool`;
@@ -134,7 +135,7 @@ let rules = [
   ];
   "all_interval_nat_DEF", all_interval_nat_DEF, [];
   (* "size_list_DEF", size_list_DEF; *)
-  "size_list_ALT", size_list_ALT, [
+  "size_list_UNROLL15", size_list_UNROLL15, [
     `size_list:(num)list->num`;
     `size_list:(face)list->num`;
     `size_list:((face)list)list->num`;
@@ -347,7 +348,10 @@ loadt "out.hl";;
 (* 14.663s with nth_ALT with 10 cases *)
 (* 14.538s with funpow_ALT2 with 5 cases *)
 (* 14.487s with maps_ALT, count_ALT, map_ALT, pred_list_ALT *)
+(* 9.915s with fast arithmetic *)
+(* 9.859s with fast arithmetic + standardize *)
 reset_all_counters();;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
 
 time (f_tameEnumFilterBounded `0`) `100000`;;
@@ -368,8 +372,8 @@ needs "out.hl";;
 compile_term db "t" `pred_list (\x. x <= 10) [1;2;4;3]` |> print_expr Format.std_formatter;;
 compile_term db "t" `map_filter (\x. if x <= 10 then SOME (x + 2) else NONE) [1;2;4;3]` |> print_expr Format.std_formatter;;
 
-let tm = `Graph [] 0 [[Face [1;2] Final]; [Face [3] Nonfinal]] [1;2]`;;
-let tm2 = rand (concl (f_graph `4`));;
+let tm = Nat_arith.replace_numerals `Graph [] 0 [[Face [1;2] Final]; [Face [3] Nonfinal]] [1;2]`;;
+let tm2 = rand (concl (f_graph `N4 _0`));;
 
 f_is_none `NONE`;;
 f_between `[1;2;3]` `1` `3`;;
