@@ -53,6 +53,17 @@ let create_memo, clear_all_memos =
     Hashtbl.iter (fun _ m -> Hashtbl.clear m) memos in
   create, clear_all;;
 
+let create_arg_list, clear_arg_lists =
+  let lists = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find lists name
+    with Not_found ->
+      let list = ref ([]: term list list) in
+      Hashtbl.add lists name list;
+      list in
+  let clear_all () =
+    Hashtbl.iter (fun _ s -> s := []) lists in
+  create, clear_all;;
 
 let func_of_conv const (conv: conv) =
   let f args =
@@ -309,7 +320,7 @@ let check_arg_form, check_args_form =
   check_arg_form, check_args_form;;
 
 
-type extra = Extra_counter | Extra_memo;;
+type extra = Extra_counter | Extra_memo | Extra_arg_list;;
 
 type rewrite_rec = {
   args: pattern list;
@@ -975,9 +986,6 @@ let compile_function func =
     let body = compile_rhs ty_inst case in
     pats, body
   in
-  let ty_inst =
-    if func.poly_indices = [] then None
-    else Some (mk_raw "ty_inst") in
   let get_ty_exprs arg_exprs =
     if func.poly_indices = [] then []
     else
@@ -988,7 +996,8 @@ let compile_function func =
         mk_list_expr (List.map (fun a -> App (Raw "type_of", a)) arg_list); 
         mk_list_expr []
       ]) in
-      [mk_let ("ty_inst", e)] in
+      [mk_let ("ty_inst", e)] 
+  in
   let add_try expr arg_exprs =
     if not !generate_eval_errors then expr
     else
@@ -998,10 +1007,19 @@ let compile_function func =
       let case2 = (Raw "Eval_error err",
                    mk_app (Raw "eval_error_propagate", 
                     [Raw "err"; String func.name; mk_list_expr arg_exprs])) in
-      Try (expr, [case1; case2]) in
+      Try (expr, [case1; case2]) 
+  in
   let add_counter name expr =
     mk_let ~body:(Some expr) 
-      ("()", App (Raw "incr", Raw (Format.sprintf "counter_%s" name))) in
+      ("()", App (Raw "incr", Raw (Format.sprintf "counter_%s" name))) 
+  in
+  let add_arg_list name arg_exprs expr =
+    chain_let [
+      mk_let ("args", mk_list_expr arg_exprs);
+      mk_let ("()", Raw (Format.sprintf "args_%s := args :: !args_%s") name name);
+      expr
+    ]
+  in
   let add_memo name arg_exprs expr =
     (* TODO: only one argument is supported now *)
     let key_expr = mk_let ("key", App (Raw "string_of_term", hd arg_exprs)) in
@@ -1012,11 +1030,17 @@ let compile_function func =
     let save_expr = mk_let ("()", mk_app (Raw "Hashtbl.add", [name_expr; Raw "key"; Raw "result"])) in
     append_let_body key_expr
       (Try (find_expr, [Raw "Not_found",
-        chain_let [mk_let ("result", expr); save_expr; Raw "result"]])) in
+        chain_let [mk_let ("result", expr); save_expr; Raw "result"]])) 
+  in
   let add_extra arg_exprs expr extra =
     match extra with
     | Extra_counter -> add_counter func.name expr
-    | Extra_memo -> add_memo func.name arg_exprs expr in
+    | Extra_memo -> add_memo func.name arg_exprs expr
+    | Extra_arg_list -> add_arg_list func.name arg_exprs expr
+  in
+  let ty_inst =
+    if func.poly_indices = [] then None
+    else Some (mk_raw "ty_inst") in
   let case1 = hd func.cases in
   match List.map (compile_case ty_inst) func.cases with
   | [] -> failwith "compile_function: no cases"
@@ -1064,6 +1088,10 @@ let compile_rules db rules =
       | Extra_memo ->
         let e = mk_let (Format.sprintf "memo_%s" f.name,
                         App (Raw "create_memo", String f.name)) in
+        e :: es
+      | Extra_arg_list ->
+        let e = mk_let (Format.sprintf "args_%s" f.name,
+                        App (Raw "create_arg_list", String f.name)) in
         e :: es in
     let iterate es f = List.fold_left (get_extra f) es f.extra in
     List.fold_left iterate [] fs 
