@@ -631,9 +631,9 @@ let mk_tuple = function
   | [e] -> e
   | es -> Tuple es;;
 
-let mk_list exprs = List_expr exprs;;
+let mk_list_expr exprs = List_expr exprs;;
 
-let mk_int_list ints = mk_list (List.map (fun i -> mk_raw (string_of_int i)) ints);;
+let mk_int_list ints = mk_list_expr (List.map (fun i -> mk_raw (string_of_int i)) ints);;
 
 let mk_let_and ?(body = None) = function
   | [] -> failwith "mk_let_and: empty list"
@@ -985,8 +985,8 @@ let compile_function func =
       let e = mk_app (Raw "itlist2", [
         Raw "type_match"; 
         Raw func.arg_ty_name; 
-        mk_list (List.map (fun a -> App (Raw "type_of", a)) arg_list); 
-        mk_list []
+        mk_list_expr (List.map (fun a -> App (Raw "type_of", a)) arg_list); 
+        mk_list_expr []
       ]) in
       [mk_let ("ty_inst", e)] in
   let add_try expr arg_exprs =
@@ -994,10 +994,10 @@ let compile_function func =
     else
       let case1 = (Raw "Failure msg", 
                    mk_app (Raw "eval_error", 
-                    [Raw "msg"; String func.name; mk_list arg_exprs])) in
+                    [Raw "msg"; String func.name; mk_list_expr arg_exprs])) in
       let case2 = (Raw "Eval_error err",
                    mk_app (Raw "eval_error_propagate", 
-                    [Raw "err"; String func.name; mk_list arg_exprs])) in
+                    [Raw "err"; String func.name; mk_list_expr arg_exprs])) in
       Try (expr, [case1; case2]) in
   let add_counter name expr =
     mk_let ~body:(Some expr) 
@@ -1113,7 +1113,7 @@ let compile_rules db rules =
         App (Raw "list_mk_comb", 
           mk_tuple [mk_app (Raw "follow_full_path", [String path; App (Raw "concl", Raw base_name)]);
                     App (Raw (Format.sprintf "map (C follow_full_path (concl %s))" base_name),
-                         mk_list (map (fun tm -> String (find_full_path ((=) tm) base_tm)) args))])) in
+                         mk_list_expr (map (fun tm -> String (find_full_path ((=) tm) base_tm)) args))])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) 
   in
   let get_poly_indices case =
@@ -1128,7 +1128,7 @@ let compile_rules db rules =
       Raw (Format.sprintf "strip_comb_gabs (fst (dest_eq (concl %s)))" case1.th_name)) in
     let fixed_args_expr =
       let list_expr = 
-        mk_list (map (fun tm ->
+        mk_list_expr (map (fun tm ->
           let path = find_full_path ((=) tm) case1.rhs_tm in
           mk_app (Raw "follow_full_path", 
             [String path; Raw (Format.sprintf "(rand (concl %s))" case1.th_name)]))
@@ -1253,7 +1253,7 @@ let compile_term db f_name tm =
       mk_let ~body:(Some eq_expr) ("abs_tm",
         App (Raw "list_mk_comb", 
           mk_tuple [mk_app (Raw "follow_full_path", [String path; Raw base_name]);
-                    mk_list (map get_tm_expr args)])) in
+                    mk_list_expr (map get_tm_expr args)])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) in
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let base_args, body_tm = strip_gabs abs_tm in

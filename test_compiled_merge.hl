@@ -40,428 +40,32 @@ let merge_sort_def = define
   `merge_sort l = tree2list (list2tree l)`;;
 
 let db = add_thms (empty_db ()) [
-  "le_nat_def", le_nat_def;
-  "append_def", append_def;
-  "double_def", double_def;
-  "triple_def", triple_def;
-  "merge_def", merge_def;
-  "tree2list_def", tree2list_def;
-  "insTree_def", insTree_def;
-  "list2tree_def", list2tree_def;
-  "merge_sort_def", merge_sort_def;
+  "le_nat_def", le_nat_def, [];
+  "append_def", append_def, [];
+  "double_def", double_def, [];
+  "triple_def", triple_def, [];
+  "merge_def", merge_def, [];
+  "tree2list_def", tree2list_def, [];
+  "insTree_def", insTree_def, [];
+  "list2tree_def", list2tree_def, [];
+  "merge_sort_def", merge_sort_def, [];
 ];;
 
-let r = entries db |> assoc "merge_sort" |> compile db;;
-print_expr Format.std_formatter r;;
+write_rules_names db "out2.hl" [
+  "le_nat"; "append"; "double"; "triple"; "merge";
+  "tree2list"; "insTree"; "list2tree"; "merge_sort"
+];;
 
-
-let true_tm = `T`;;
+let true_tm = standardize_tm `T`;;
 let COND_T = prove(`(if T then (t:A) else e) = t`, REWRITE_TAC[COND_CLAUSES]);;
 let COND_F = prove(`(if F then (t:A) else e) = e`, REWRITE_TAC[COND_CLAUSES]);;
 
-let f_le_nat =
-  let head_tm = `le_nat` in
-  let k_var = mk_var ("k", `:num`) in
-  let l_var = mk_var ("l", `:num`) in
-  let n_var = mk_var ("n", `:num`) in
-  let le_nat_def_case1, le_nat_def_case2, le_nat_def_case3 =
-    match split_thm le_nat_def with
-    | [th1; th2; th3] ->
-      (th1, th2, th3)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_le_nat tm1 tm2 =
-    match (tm1, tm2) with
-    | (Comb (Const ("SUC", _), k), Comb (Const ("SUC", _), l)) ->
-      let th = INST [l, l_var; k, k_var] le_nat_def_case3 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a2 = dest_comb rhs in
-        let op, a1 = dest_comb op in
-        snd (f_le_nat a1 a2) in
-      (head_tm, TRANS th rhs_eq)
-    | (Comb (Const ("SUC", _), k), Comb (Const ("NUMERAL", _), Const ("_0", _))) ->
-      (head_tm, INST [k, k_var] le_nat_def_case2)
-    | (Comb (Const ("NUMERAL", _), Const ("_0", _)), n) ->
-      (head_tm, INST [n, n_var] le_nat_def_case1)
-    | _ ->
-      failwith "No match: le_nat"
-     in
-  f_le_nat;;
+let COND_num_list_T = (standardize o INST_TYPE[`:(num)list`, aty]) COND_T and
+    COND_num_list_F = (standardize o INST_TYPE[`:(num)list`, aty]) COND_F and
+    COND_arbin_T = (standardize o INST_TYPE[`:arbin`, aty]) COND_T and
+    COND_arbin_F = (standardize o INST_TYPE[`:arbin`, aty]) COND_F;;
 
-let f_append =
-  let head_tm = `append` in
-  let l1_var = mk_var ("l1", `:(num)list`) in
-  let l2_var = mk_var ("l2", `:(num)list`) in
-  let x_var = mk_var ("x", `:num`) in
-  let append_def_case1, append_def_case2 =
-    match split_thm append_def with
-    | [th1; th2] ->
-      (th1, th2)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_append tm1 tm2 =
-    match (tm1, tm2) with
-    | (Comb (Comb (Const ("CONS", _), x), l1), l2) ->
-      let th = INST [l2, l2_var; l1, l1_var; x, x_var] append_def_case2 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a1 = dest_comb rhs in
-        let a1 =
-          let op, a2 = dest_comb a1 in
-          let op, a1 = dest_comb op in
-          snd (f_append a1 a2) in
-        MK_COMB (REFL op, a1) in
-      (head_tm, TRANS th rhs_eq)
-    | (Const ("NIL", _), l2) ->
-      (head_tm, INST [l2, l2_var] append_def_case1)
-    | _ ->
-      failwith "No match: append"
-     in
-  f_append;;
-
-let f_double =
-  let head_tm = `double` in
-  let l_var = mk_var ("l", `:(num)list`) in
-  let double_def_case1 =
-    match split_thm double_def with
-    | [th1] ->
-      th1
-    | _ ->
-      failwith "error"
-     in
-  let rec f_double tm1 =
-    match tm1 with
-    | l ->
-      let th = INST [l, l_var] double_def_case1 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a2 = dest_comb rhs in
-        let op, a1 = dest_comb op in
-        snd (f_append a1 a2) in
-      (head_tm, TRANS th rhs_eq)
-    | _ ->
-      failwith "No match: double"
-     in
-  f_double;;
-
-let f_triple =
-  let head_tm = `triple` in
-  let l_var = mk_var ("l", `:(num)list`) in
-  let triple_def_case1 =
-    match split_thm triple_def with
-    | [th1] ->
-      th1
-    | _ ->
-      failwith "error"
-     in
-  let rec f_triple tm1 =
-    match tm1 with
-    | l ->
-      let th = INST [l, l_var] triple_def_case1 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a2 = dest_comb rhs in
-        let op, a1 = dest_comb op in
-        let a2 =
-          let op, a2 = dest_comb a2 in
-          let op, a1 = dest_comb op in
-          snd (f_append a1 a2) in
-        let h_tm, f_eq = f_append a1 (rand (concl a2)) in
-        TRANS (MK_COMB (MK_COMB (REFL h_tm, REFL a1), a2)) f_eq in
-      (head_tm, TRANS th rhs_eq)
-    | _ ->
-      failwith "No match: triple"
-     in
-  f_triple;;
-
-
-let f_merge =
-  let head_tm = `merge` in
-  let h1_var = mk_var ("h1", `:num`) in
-  let h2_var = mk_var ("h2", `:num`) in
-  let l1_var = mk_var ("l1", `:(num)list`) in
-  let l2_var = mk_var ("l2", `:(num)list`) in
-  let t1_var = mk_var ("t1", `:(num)list`) in
-  let t2_var = mk_var ("t2", `:(num)list`) in
-  let merge_def_case1, merge_def_case2, merge_def_case3 =
-    match split_thm merge_def with
-    | [th1; th2; th3] ->
-      (th1, th2, th3)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_merge tm1 tm2 =
-    match (tm1, tm2) with
-    | (l1, Const ("NIL", _)) ->
-      (head_tm, INST [l1, l1_var] merge_def_case3)
-    | (Const ("NIL", _), l2) ->
-      (head_tm, INST [l2, l2_var] merge_def_case2)
-    | (Comb (Comb (Const ("CONS", _), h1), t1), Comb (Comb (Const ("CONS", _), h2), t2)) ->
-      let th =
-        INST [t2, t2_var; h2, h2_var; t1, t1_var; h1, h1_var] merge_def_case1 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a3 = dest_comb rhs in
-        let op, a2 = dest_comb op in
-        let op, a1 = dest_comb op in
-        let a1 =
-          let op, a2 = dest_comb a1 in
-          let op, a1 = dest_comb op in
-          snd (f_le_nat a1 a2) in
-        let a2 =
-          let op, a1 = dest_comb a2 in
-          let a1 =
-            let op, a2 = dest_comb a1 in
-            let op, a1 = dest_comb op in
-            snd (f_merge a1 a2) in
-          MK_COMB (REFL op, a1) in
-        let a3 =
-          let op, a1 = dest_comb a3 in
-          let a1 =
-            let op, a2 = dest_comb a1 in
-            let op, a1 = dest_comb op in
-            snd (f_merge a1 a2) in
-          MK_COMB (REFL op, a1) in
-        MK_COMB (MK_COMB (MK_COMB (REFL op, a1), a2), a3) in
-      (head_tm, TRANS th rhs_eq)
-    | _ ->
-      failwith "No match: merge"
-     in
-  f_merge;;
-
-f_merge `[SUC 0; SUC (SUC 0)]` `[SUC 0; 0]`;;
-
-let f_merge =
-  let head_tm = `merge` in
-  let h1_var = mk_var ("h1", `:num`) in
-  let h2_var = mk_var ("h2", `:num`) in
-  let l1_var = mk_var ("l1", `:(num)list`) in
-  let l2_var = mk_var ("l2", `:(num)list`) in
-  let t1_var = mk_var ("t1", `:(num)list`) in
-  let t2_var = mk_var ("t2", `:(num)list`) in
-  let merge_def_case1, merge_def_case2, merge_def_case3 =
-    match split_thm merge_def with
-    | [th1; th2; th3] ->
-      (th1, th2, th3)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_merge tm1 tm2 =
-    match (tm1, tm2) with
-    | (l1, Const ("NIL", _)) ->
-      (head_tm, INST [l1, l1_var] merge_def_case3)
-    | (Const ("NIL", _), l2) ->
-      (head_tm, INST [l2, l2_var] merge_def_case2)
-    | (Comb (Comb (Const ("CONS", _), h1), t1), Comb (Comb (Const ("CONS", _), h2), t2)) ->
-      let th =
-        INST [t2, t2_var; h2, h2_var; t1, t1_var; h1, h1_var] merge_def_case1 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, else_tm = dest_comb rhs in
-        let op, then_tm = dest_comb op in
-        let op, cond_tm = dest_comb op in
-        let ty = type_of then_tm in
-        let then_var = mk_var ("t", ty) in
-        let else_var = mk_var ("e", ty) in
-        let cond_eq =
-          let op, a2 = dest_comb cond_tm in
-          let op, a1 = dest_comb op in
-          snd (f_le_nat a1 a2) in
-        let th0 =
-          MK_COMB (MK_COMB (MK_COMB (REFL op, cond_eq), REFL then_tm), REFL else_tm) in
-        if rand (concl cond_eq) = true_tm then
-          let th1 =
-            INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_T) in
-          let then_eq =
-            let op, a1 = dest_comb then_tm in
-            let a1 =
-              let op, a2 = dest_comb a1 in
-              let op, a1 = dest_comb op in
-              snd (f_merge a1 a2) in
-            MK_COMB (REFL op, a1) in
-          TRANS (TRANS th0 th1) then_eq
-        else
-          let th1 =
-            INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_F) in
-          let else_eq =
-            let op, a1 = dest_comb else_tm in
-            let a1 =
-              let op, a2 = dest_comb a1 in
-              let op, a1 = dest_comb op in
-              snd (f_merge a1 a2) in
-            MK_COMB (REFL op, a1) in
-          TRANS (TRANS th0 th1) else_eq in
-      (head_tm, TRANS th rhs_eq)
-    | _ ->
-      failwith "No match: merge"
-     in
-  f_merge;;
-
-let f_tree2list =
-  let head_tm = `tree2list` in
-  let a1_var = mk_var ("a1", `:arbin`) in
-  let a2_var = mk_var ("a2", `:arbin`) in
-  let n_var = mk_var ("n", `:num`) in
-  let tree2list_def_case1, tree2list_def_case2 =
-    match split_thm tree2list_def with
-    | [th1; th2] ->
-      (th1, th2)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_tree2list tm1 =
-    match tm1 with
-    | Comb (Comb (Comb (Const ("Nd", _), n), a1), a2) ->
-      let th = INST [a2, a2_var; a1, a1_var; n, n_var] tree2list_def_case2 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a1 = dest_comb rhs in
-        let a1 =
-          let op, a2 = dest_comb a1 in
-          let op, a1 = dest_comb op in
-          let a1 =
-            let op, a1 = dest_comb a1 in
-            snd (f_tree2list a1) in
-          let a2 =
-            let op, a1 = dest_comb a2 in
-            snd (f_tree2list a1) in
-          let h_tm, f_eq = f_merge (rand (concl a1)) (rand (concl a2)) in
-          TRANS (MK_COMB (MK_COMB (REFL h_tm, a1), a2)) f_eq in
-        MK_COMB (REFL op, a1) in
-      (head_tm, TRANS th rhs_eq)
-    | Const ("Lf", _) ->
-      (head_tm, tree2list_def_case1)
-    | _ ->
-      failwith "No match: tree2list"
-     in
-  f_tree2list;;
-
-let f_insTree =
-  let head_tm = `insTree` in
-  let a1_var = mk_var ("a1", `:arbin`) in
-  let a2_var = mk_var ("a2", `:arbin`) in
-  let m_var = mk_var ("m", `:num`) in
-  let n_var = mk_var ("n", `:num`) in
-  let insTree_def_case1, insTree_def_case2 =
-    match split_thm insTree_def with
-    | [th1; th2] ->
-      (th1, th2)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_insTree tm1 tm2 =
-    match (tm1, tm2) with
-    | (Comb (Comb (Comb (Const ("Nd", _), m), a1), a2), n) ->
-      let th =
-        INST [n, n_var; a2, a2_var; a1, a1_var; m, m_var] insTree_def_case2 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, else_tm = dest_comb rhs in
-        let op, then_tm = dest_comb op in
-        let op, cond_tm = dest_comb op in
-        let ty = type_of then_tm in
-        let then_var = mk_var ("t", ty) in
-        let else_var = mk_var ("e", ty) in
-        let cond_eq =
-          let op, a2 = dest_comb cond_tm in
-          let op, a1 = dest_comb op in
-          snd (f_le_nat a1 a2) in
-        let th0 =
-          MK_COMB (MK_COMB (MK_COMB (REFL op, cond_eq), REFL then_tm), REFL else_tm) in
-        if rand (concl cond_eq) = true_tm then
-          let th1 =
-            INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_T) in
-          let then_eq =
-            let op, a1 = dest_comb then_tm in
-            let a1 =
-              let op, a2 = dest_comb a1 in
-              let op, a1 = dest_comb op in
-              snd (f_insTree a1 a2) in
-            MK_COMB (REFL op, a1) in
-          TRANS (TRANS th0 th1) then_eq
-        else
-          let th1 =
-            INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_F) in
-          let else_eq =
-            let op, a1 = dest_comb else_tm in
-            let a1 =
-              let op, a2 = dest_comb a1 in
-              let op, a1 = dest_comb op in
-              snd (f_insTree a1 a2) in
-            MK_COMB (REFL op, a1) in
-          TRANS (TRANS th0 th1) else_eq in
-      (head_tm, TRANS th rhs_eq)
-    | (Const ("Lf", _), n) ->
-      (head_tm, INST [n, n_var] insTree_def_case1)
-    | _ ->
-      failwith "No match: insTree"
-     in
-  f_insTree;;
-
-let f_list2tree =
-  let head_tm = `list2tree` in
-  let n_var = mk_var ("n", `:num`) in
-  let ns_var = mk_var ("ns", `:(num)list`) in
-  let list2tree_def_case1, list2tree_def_case2 =
-    match split_thm list2tree_def with
-    | [th1; th2] ->
-      (th1, th2)
-    | _ ->
-      failwith "error"
-     in
-  let rec f_list2tree tm1 =
-    match tm1 with
-    | Comb (Comb (Const ("CONS", _), n), ns) ->
-      let th = INST [ns, ns_var; n, n_var] list2tree_def_case2 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a2 = dest_comb rhs in
-        let op, a1 = dest_comb op in
-        let a1 =
-          let op, a1 = dest_comb a1 in
-          snd (f_list2tree a1) in
-        let h_tm, f_eq = f_insTree (rand (concl a1)) a2 in
-        TRANS (MK_COMB (MK_COMB (REFL h_tm, a1), REFL a2)) f_eq in
-      (head_tm, TRANS th rhs_eq)
-    | Const ("NIL", _) ->
-      (head_tm, list2tree_def_case1)
-    | _ ->
-      failwith "No match: list2tree"
-     in
-  f_list2tree;;
-
-let f_merge_sort =
-  let head_tm = `merge_sort` in
-  let l_var = mk_var ("l", `:(num)list`) in
-  let merge_sort_def_case1 =
-    match split_thm merge_sort_def with
-    | [th1] ->
-      th1
-    | _ ->
-      failwith "error"
-     in
-  let rec f_merge_sort tm1 =
-    match tm1 with
-    | l ->
-      let th = INST [l, l_var] merge_sort_def_case1 in
-      let rhs = rand (concl th) in
-      let rhs_eq =
-        let op, a1 = dest_comb rhs in
-        let a1 =
-          let op, a1 = dest_comb a1 in
-          snd (f_list2tree a1) in
-        let h_tm, f_eq = f_tree2list (rand (concl a1)) in
-        TRANS (MK_COMB (REFL h_tm, a1)) f_eq in
-      (head_tm, TRANS th rhs_eq)
-    | _ ->
-      failwith "No match: merge_sort"
-     in
-  f_merge_sort;;
-
-
+needs "out2.hl";;
 needs "test_merge_sort.hl";;
 
 let run_test ?(cbv = true) tm =
@@ -473,35 +77,35 @@ let run_test ?(cbv = true) tm =
   ();;
 
 (*
-f_merge_sort: 0.112s
+f_merge_sort: 0.112s (0.084s)
 Eval1:        0.232s
 CBV_CONV:     1.844s
 *)
 run_test `L400`;;
 
 (*
-f_merge_sort: 0.412s
+f_merge_sort: 0.412s (0.284s)
 Eval1:        0.864s
 CBV_CONV:     11.444s
 *)
 run_test `L1200`;;
 
 (*
-f_merge_sort: 0.88s
+f_merge_sort: 0.88s (0.656s)
 Eval1:        1.984s
 CBV_CONV:     41.464s
 *)
 run_test `L2400`;;
 
 (*
-f_merge_sort: 2.096s
+f_merge_sort: 2.096s (1.472s)
 Eval1:        4.38s
 CBV_CONV:     -
 *)
 run_test ~cbv:false `L4800`;;
 
 (*
-f_merge_sort: 4.544s
+f_merge_sort: 4.544s (3.288s)
 Eval1:        10.404s
 CBV_CONV:     -
 *)
