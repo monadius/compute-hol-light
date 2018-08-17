@@ -419,3 +419,6 @@ clear_arg_lists();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 
 get_all_counters();;
+
+(* 12328.756s (not exclusive) *)
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100000`);;
