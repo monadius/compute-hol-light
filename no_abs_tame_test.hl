@@ -1,0 +1,421 @@
+needs "tame_defs.hl";;
+needs "tame_defs_unrolled.hl";;
+needs "no_abs_tame_defs.hl";;
+loadt "test_tame_support.hl";;
+
+let rules = [
+  "APPEND_UNROLL8", APPEND_UNROLL8, [
+    `APPEND:(num)list->(num)list->(num)list`;
+    `APPEND:(face)list->(face)list->(face)list`;
+    `APPEND:((face)list)list->((face)list)list->((face)list)list`;
+    `APPEND:((num)list)list->((num)list)list->((num)list)list`;
+    `APPEND:(graph)list->(graph)list->(graph)list`
+  ];
+  "map_of_DEF", map_of_DEF, [
+    `map_of:(num#(num,((num)list)list)tries)list->num->((num,((num)list)list)tries)option`
+  ];
+  "the_DEF", the_DEF, [
+    `the:(num)option->num`;
+    `the:(num#num)option->num#num`;
+    `the:((num,((num)list)list)tries)option->(num,((num)list)list)tries`;
+    `the:((real)list#(num,((num)list)list)tries)option->(real)list#(num,((num)list)list)tries`;
+  ];
+  "is_none_DEF", is_none_DEF, [
+    `is_none:(num)option->bool`;
+    `is_none:(num#num)option->bool`;
+    `is_none:((num,((num)list)list)tries)option->bool`;
+    `is_none:((real)list#(num,((num)list)list)tries)option->bool`;
+  ];
+  "funpow_UNROLL5", funpow_UNROLL5, [
+    `funpow:num->(num->num)->num->num`;
+    `funpow:num->(((num)list)list->((num)list)list)->((num)list)list->((num)list)list`;
+  ];
+  "nth_UNROLL15", nth_UNROLL15, [
+    `nth:((face)list)list->num->(face)list`;
+    `nth:(num)list->num->num`;
+  ];
+  "fold_DEF", fold_DEF, [
+    `fold:(num->(num)list->(num)list)->(num)list->(num)list->(num)list`;
+  ];
+  "rev_ABS1", rev_ABS1, [
+    `rev_abs1:num->(num)list->(num)list`;
+  ];
+  "rev_NO_ABS", rev_NO_ABS, [
+    `rev:(num)list->(num)list`;
+  ];
+  "upt_DEF", upt_DEF, [];
+  "zip_ALT", zip_ALT, [
+    `zip:(num)list->(num)list->(num#num)list`;
+  ];
+  "null_DEF", null_DEF, [
+    `null:(face)list->bool`;
+    `null:(num)list->bool`;
+    `null:((num)list)list->bool`;
+  ];
+  "last_DEF", last_DEF, [
+    `last:(num)list->num`;
+  ];
+  "maps_UNROLL7", maps_UNROLL7, [
+    `maps:((num)list->((num)list)list)->((num)list)list->((num)list)list`;
+    `maps:(face->(num)list)->(face)list->(num)list`;
+    `maps:(num->(graph)list)->(num)list->(graph)list`
+  ];
+  "foldl_DEF", foldl_DEF, [
+    `foldl:(num->num->num)->num->(num)list->num`;
+  ];
+  "foldr_ALT", foldr_ALT, [
+    `foldr:((num)list->(num)list->(num)list)->((num)list)list->(num)list->(num)list`
+  ];
+  "concat_DEF", concat_DEF, [
+    `concat:((num)list)list->(num)list`
+  ];
+  "filter_DEF", filter_DEF, [
+    `filter:(face->bool)->(face)list->(face)list`;
+    `filter:(num#num->bool)->(num#num)list->(num#num)list`;
+    `filter:(num->bool)->(num)list->(num)list`;
+    `filter:((num)list->bool)->((num)list)list->((num)list)list`;
+    `filter:(graph->bool)->(graph)list->(graph)list`;
+  ];
+  "member_DEF", member_DEF, [
+    `member:(num)list->num->bool`
+  ];
+  "rotate1_DEF", rotate1_DEF, [
+    `rotate1:(num)list->(num)list`
+  ];
+  "rotate_ALT", rotate_ALT, [
+    `rotate:num->(num)list->(num)list`
+  ];
+  "bool_to_num_DEF", bool_to_num_DEF, [];
+  "count_UNROLL7", count_UNROLL7, [
+    `count:(face->bool)->(face)list->num`;
+  ];
+  "hd_DEF", hd_DEF, [
+    `hd:((num)option)list->(num)option`;
+  ];
+  "tl_DEF", tl_DEF, [
+    `tl:((num)option)list->((num)option)list`;
+  ];
+  "list_ex_DEF", list_ex_DEF, [
+    `list_ex:((num)list->bool)->((num)list)list->bool`;
+    `list_ex:(((num)list)list->bool)->(((num)list)list)list->bool`;
+  ];
+  "remdups_DEF", remdups_DEF, [
+    `remdups:(num)list->(num)list`
+  ];
+  "remove1_DEF", remove1_DEF, [
+    `remove1:(num)list->((num)list)list->((num)list)list`;
+  ];
+  "map_UNROLL11", map_UNROLL11, [
+    `map:(face->num)->(face)list->(num)list`;
+    `map:(num->num)->(num)list->(num)list`;
+    `map:((face)list->(face)list)->((face)list)list->((face)list)list`;
+    `map:(num->(num)list)->(num)list->((num)list)list`;
+    `map:((num)list->(num)list)->((num)list)list->((num)list)list`;
+    `map:((num)list->((num)option)list)->((num)list)list->(((num)option)list)list`;
+    `map:(((num)option)list->graph)->(((num)option)list)list->(graph)list`;
+    `map:(face->(num)list)->(face)list->((num)list)list`;
+  ];
+  "pred_list_UNROLL11", pred_list_UNROLL11, [
+    `pred_list:(face->bool)->(face)list->bool`;
+    `pred_list:(num->bool)->(num)list->bool`;
+    `pred_list:(num#num->bool)->(num#num)list->bool`;
+  ];
+  "replicate_DEF", replicate_DEF, [
+    `replicate:num->(face)list->((face)list)list`;
+    `replicate:num->num->(num)list`;
+  ];
+  "gen_length_DEF", gen_length_DEF, [
+    `gen_length:num->(num)list->num`;
+    `gen_length:num->(face)list->num`;
+    `gen_length:num->((face)list)list->num`;
+    `gen_length:num->((num)list)list->num`;
+  ];
+  "map_filter_ABS1", map_filter_ABS1, [
+    `map_filter_abs1:(num->(num#num)option)->(num)list->(num#num)option->(num#num)list`;
+    `map_filter_abs1:((num)list->(num)option)->((num)list)list->(num)option->(num)list`;
+  ];
+  "map_filter_NO_ABS", map_filter_NO_ABS, [
+    `map_filter:(num->(num#num)option)->(num)list->(num#num)list`;
+    `map_filter:((num)list->(num)option)->((num)list)list->(num)list`;
+  ];
+  "list_update_DEF", list_update_DEF, [
+    `list_update:((face)list)list->num->(face)list->((face)list)list`;
+  ];
+  "all_interval_nat_DEF", all_interval_nat_DEF, [];
+  "size_list_UNROLL15", size_list_UNROLL15, [
+    `size_list:(num)list->num`;
+    `size_list:(face)list->num`;
+    `size_list:((face)list)list->num`;
+    `size_list:((num)list)list->num`;
+  ];
+  "fst_DEF", fst_DEF, [
+    `fst:num#(num,((num)list)list)tries->num`;
+    `fst:num#num->num`;
+    `fst:(num)list#(num)list->(num)list`;
+  ];
+  "snd_DEF", snd_DEF, [
+    `snd:(real)list#(num,((num)list)list)tries->(num,((num)list)list)tries`;
+  ];
+  "mapAt_DEF", mapAt_DEF, [
+    `mapAt:(num)list->((face)list->(face)list)->((face)list)list->((face)list)list`;
+  ];
+  "splitAtRec_DEF", splitAtRec_DEF, [
+    `splitAtRec:num->(num)list->(num)list->(num)list#(num)list`
+  ];
+  "splitAt_DEF", splitAt_DEF, [
+    `splitAt:num->(num)list->(num)list#(num)list`
+  ];
+  "between_ABS1", between_ABS1, [
+    `between_abs1:num->(num)list#(num)list->(num)list`;
+  ];
+  "between_NO_ABS", between_NO_ABS, [
+    `between:(num)list->num->num->(num)list`
+  ];
+  "minimall_ABS1", minimall_ABS1, [
+    `minimall_abs1:(face->num)->face->face->face`;
+    `minimall_abs1:(num->num)->num->num->num`;
+  ];
+  "minimall_NO_ABS", minimall_NO_ABS, [
+    `minimall:(face->num)->(face)list->face`;
+    `minimall:(num->num)->(num)list->num`;
+  ];
+  "replace_DEF", replace_DEF, [
+    `replace:face->(face)list->(face)list->(face)list`;
+  ];
+  "removeKey_ABS1", removeKey_ABS1, [
+    `removeKey_abs1:num->(num#num)->bool`;
+  ];
+  "removeKey_NO_ABS", removeKey_NO_ABS, [
+    `removeKey:num->(num#num)list->(num#num)list`;
+  ];
+  "removeKeyList_DEF", removeKeyList_DEF, [
+    `removeKeyList:(num)list->(num#num)list->(num#num)list`;
+  ];
+
+  "vertices_face_DEF", vertices_face_DEF, [];
+  "final_face_DEF", final_face_DEF, [];
+  "faceListAt_DEF", faceListAt_DEF, [];
+  "facesAt_DEF", facesAt_DEF, [];
+  "tri_ABS1", tri_ABS1, [];
+  "tri_NO_ABS", tri_NO_ABS, [];
+  "quad_ABS1", quad_ABS1, [];
+  "quad_NO_ABS", quad_NO_ABS, [];
+  "faces_DEF", faces_DEF, [];
+  "graph_ALT", graph_ALT, [];
+  "degree_DEF", degree_DEF, [];
+  "except_ABS1", except_ABS1, [];
+  "except_NO_ABS", except_NO_ABS, [];
+  "finals_DEF", finals_DEF, [];
+  "heights_DEF", heights_DEF, [];
+  "height_DEF", height_DEF, [];
+  "nextElem_ALT", nextElem_ALT, [
+    `nextElem:(num)list->num->num->num`;
+  ];
+  "setFinal_DEF", setFinal_DEF, [];
+  "nextVertex_ALT", nextVertex_ALT, [];
+  "neighbors_ABS1", neighbors_ABS1, [];
+  "neighbors_NO_ABS", neighbors_NO_ABS, [];
+  "nonFinals_ABS1", nonFinals_ABS1, [];
+  "nonFinals_NO_ABS", nonFinals_NO_ABS, [];
+  "vertextype_DEF", vertextype_DEF, [];
+  "finalVertex_DEF", finalVertex_DEF, [];
+  "final_graph_ALT", final_graph_ALT, [];
+  "nextVertices_DEF", nextVertices_DEF, [];
+  "countVertices_DEF", countVertices_DEF, [];
+  "directedLength_DEF", directedLength_DEF, [];
+  "vertices_graph_DEF", vertices_graph_DEF, [];
+
+  "tame10_ABS1", tame10_ABS1, [];
+  "tame10_NO_ABS", tame10_NO_ABS, [];
+  "tame11a_ABS1", tame11a_ABS1, [];
+  "tame11a_NO_ABS", tame11a_NO_ABS, [];
+  "tame11b_ABS1", tame11b_ABS1, [];
+  "tame11b_NO_ABS", tame11b_NO_ABS, [];
+  "tame12o_ABS1", tame12o_ABS1, [];
+  "tame12o_NO_ABS", tame12o_NO_ABS, [];
+  "tame10ub_DEF", tame10ub_DEF, [];
+  "excessTCount_DEF", excessTCount_DEF, [];
+  "squanderTarget_DEF", squanderTarget_DEF, [];
+  "squanderFace_ALT", squanderFace_ALT, [];
+  "squanderVertex_ALT2", squanderVertex_ALT2, [];
+  "maxGon_DEF", maxGon_DEF, [];
+  "seed_DEF", seed_DEF, [];
+  "duplicateEdge_DEF", duplicateEdge_DEF, [];
+  "containsUnacceptableEdgeSnd_ALT", containsUnacceptableEdgeSnd_ALT, [];
+  "containsUnacceptableEdge_ALT", containsUnacceptableEdge_ALT, [];
+  "containsDuplicateEdge_ABS1", containsDuplicateEdge_ABS1, [];
+  "containsDuplicateEdge_NO_ABS", containsDuplicateEdge_NO_ABS, [];
+
+  "alist_DEF", alist_DEF, [
+    `alist:(num,((num)list)list)tries->(num#(num,((num)list)list)tries)list`
+  ];
+  "values_DEF", values_DEF, [
+    `values:(num,((num)list)list)tries->(((num)list)list)list`
+  ];
+  "lookup_ALT", lookup_ALT, [
+    `lookup:(num,((num)list)list)tries->(num)list->(((num)list)list)list`
+  ];
+  "rem_alist_DEF", rem_alist_DEF, [
+    `rem_alist:num->(num#(num,((num)list)list)tries)list->(num#(num,((num)list)list)tries)list`
+  ];
+  "update_ALT", update_ALT, [
+    `update:(num,((num)list)list)tries->(num)list->(((num)list)list)list->(num,((num)list)list)tries`
+  ];
+
+  "minimalFace_ABS1", minimalFace_ABS1, [];
+  "minimalFace_NO_ABS", minimalFace_NO_ABS, [];
+  "minimalVertex_DEF", minimalVertex_DEF, [];
+  "listSum_DEF", listSum_DEF, [
+    `listSum:(face)list->(face->num)->num`;
+  ];
+  "heightsNewVertices_ABS1", heightsNewVertices_ABS1, [];
+  "heightsNewVertices_NO_ABS", heightsNewVertices_NO_ABS, [];
+  "replacefacesAt_DEF", replacefacesAt_DEF, [
+    `replacefacesAt:(num)list->face->(face)list->((face)list)list->((face)list)list`
+  ];
+  "split_face_NO_ABS", split_face_NO_ABS, [];
+  "splitFace_ABS2", splitFace_ABS2, [];
+  "splitFace_NO_ABS", splitFace_NO_ABS, [];
+  "makeFaceFinalFaceList_DEF", makeFaceFinalFaceList_DEF, [];
+  "makeFaceFinal_DEF", makeFaceFinal_DEF, [];
+  "subdivFacea_ABS1", subdivFacea_ABS1, [];
+  "subdivFacea_NO_ABS", subdivFacea_NO_ABS, [];
+  "subdivFace_DEF", subdivFace_DEF, [];
+
+  "enumAppend_ABS1", enumAppend_ABS1, [];
+  "enumAppend_ABS2", enumAppend_ABS2, [];
+  "enumAppend_NO_ABS", enumAppend_NO_ABS, [];
+  "enumBase_ABS2", enumBase_ABS2, [];
+  "enumBase_NO_ABS", enumBase_NO_ABS, [];
+  "enumerator_ABS2", enumerator_ABS2, [];
+  "enumerator_ABS3", enumerator_ABS3, [];
+  "enumerator_NO_ABS", enumerator_NO_ABS, [];
+  "enum_ALT", enum_ALT, [];
+
+  "hideDupsRec_DEF", hideDupsRec_DEF, [
+    `hideDupsRec:num->(num)list->((num)option)list`;
+  ];
+  "hideDups_DEF", hideDups_DEF, [
+    `hideDups:(num)list->((num)option)list`;
+  ];
+  "indexToVertexList_ABS1", indexToVertexList_ABS1, [];
+  "indexToVertexList_NO_ABS", indexToVertexList_NO_ABS, [];
+  "notame_DEF", notame_DEF, [];
+  "excessAtType_ALT", excessAtType_ALT, [];
+  "excessAt_DEF", excessAt_DEF, [];
+  "faceSquanderLowerBound_ABS1", faceSquanderLowerBound_ABS1, [];
+  "faceSquanderLowerBound_NO_ABS", faceSquanderLowerBound_NO_ABS, [];
+  "deleteAround_ABS1", deleteAround_ABS1, [];
+  "deleteAround_ABS2", deleteAround_ABS2, [];
+  "deleteAround_NO_ABS", deleteAround_NO_ABS, [
+    `deleteAround:graph->num->(num#num)list->(num#num)list`
+  ];
+  
+  "excessNotAtRec_ALT", excessNotAtRec_ALT, [];
+  "excessTable_ABS1", excessTable_ABS1, [];
+  "excessTable_ABS2", excessTable_ABS2, [];
+  "excessTable_NO_ABS", excessTable_NO_ABS, [];
+  "excessNotAt_ALT", excessNotAt_ALT, [];
+  "squanderLowerBound_DEF", squanderLowerBound_DEF, [];
+  "polysizes_ABS1", polysizes_ABS1, [];
+  "polysizes_ABS2", polysizes_ABS2, [];
+  "polysizes_NO_ABS", polysizes_NO_ABS, [];
+  "is_tame13a_ALT", is_tame13a_ALT, [];
+  "generatePolygonTame_ABS1", generatePolygonTame_ABS1, [];
+  "generatePolygonTame_ABS2", generatePolygonTame_ABS2, [];
+  "generatePolygonTame_NO_ABS", generatePolygonTame_NO_ABS, [];
+  "next_tame0_ABS1", next_tame0_ABS1, [];
+  "next_tame0_ABS2", next_tame0_ABS2, [];
+  "next_tame0_ABS4", next_tame0_ABS4, [];
+  "next_tame0_NO_ABS", next_tame0_NO_ABS, [];
+  "is_tame_DEF", is_tame_DEF, [];
+  "next_tame_ABS1", next_tame_ABS1, [];
+  "next_tame_NO_ABS", next_tame_NO_ABS, [];
+  "worklist_tree_aux_DEF", worklist_tree_aux_DEF, [
+    `worklist_tree_aux:(graph->(graph)list)->(graph->(num,((num)list)list)tries->(num,((num)list)list)tries)->(graph)list#(num,((num)list)list)tries->((real)list#(num,((num)list)list)tries)option`
+  ];
+  "worklist_tree_ALT", worklist_tree_ALT, [
+    `worklist_tree:(graph->(graph)list)->(graph->(num,((num)list)list)tries->(num,((num)list)list)tries)->(graph)list->(num,((num)list)list)tries->((num,((num)list)list)tries)option`
+  ];
+  "nof_vertices_ALT", nof_vertices_ALT, [
+    `nof_vertices:((num)list)list->num`
+  ];
+
+  "qsort_DEF", qsort_DEF, [`qsort:(num->num->bool)->(num)list->(num)list`];
+  "hash_ALT", hash_ALT, [];
+  "fgraph_DEF", fgraph_DEF, [];
+  "merge_ALT", merge_ALT, [
+    `merge:(num#num)list->(num#num)list->(num#num)list`;
+  ];
+  "compat_DEF", compat_DEF, [
+    `compat:(num#num)list->(num#num)list->bool`;
+  ];
+
+  "pr_iso_test_rec_ALT", pr_iso_test_rec_ALT, [
+    `pr_iso_test_rec:(num#num)list->((num)list)list->((num)list)list->bool`
+  ];
+  "pr_iso_test_DEF", pr_iso_test_DEF, [
+    `pr_iso_test:((num)list)list->((num)list)list->bool`
+  ];
+  "iso_test_DEF", iso_test_DEF, [
+    `iso_test:((num)list)list->((num)list)list->bool`
+  ];
+  "insert_mod_trie_ALT", insert_mod_trie_ALT, [];
+  (* "insert_mod2_trie_DEF", insert_mod2_trie_DEF;
+  "worklist_tree_coll_aux_trie_ALT", worklist_tree_coll_aux_trie_ALT;
+  "worklist_tree_coll_trie_DEF", worklist_tree_coll_trie_DEF;
+  "enum_filter_finals_ALT", enum_filter_finals_ALT; *)
+  "tameEnumFilter_ALT", tameEnumFilter_ALT, [];
+
+  "worklist_tree_bounded_ALT", worklist_tree_bounded_ALT, [
+    `worklist_tree_bounded:num->(graph->(graph)list)->(graph->(num,((num)list)list)tries->(num,((num)list)list)tries)->(graph)list->(num,((num)list)list)tries->(num,((num)list)list)tries`
+  ];
+  "tameEnumFilterBounded_ABS1", tameEnumFilterBounded_ABS1, [];
+  "tameEnumFilterBounded_NO_ABS", tameEnumFilterBounded_NO_ABS, [];
+];;
+
+let const_names = 
+  List.map (fun (n, th, _) ->
+    let th0 = hd (BODY_CONJUNCTS th) in
+    let const, _ = strip_comb (lhand (concl th0)) in
+    let name, _ = dest_const const in
+    name) rules;;
+
+let db = add_thms (tame_default_db ()) rules;;
+write_rules_consts db "out2.hl" [
+  [`map_filter_abs1:(num->(num#num)option)->(num)list->(num#num)option->(num#num)list`;
+   `map_filter:(num->(num#num)option)->(num)list->(num#num)list`];
+  [`map_filter_abs1:((num)list->(num)option)->((num)list)list->(num)option->(num)list`;
+   `map_filter:((num)list->(num)option)->((num)list)list->(num)list`];
+  [`subdivFacea_abs1`; `subdivFacea`];
+];;
+
+
+let () =
+  generate_call_counters := true;
+  write_rules_names db "out.hl" const_names;;
+loadt "out.hl";;
+
+(* 40.714s *)
+(* original: 0.0171s *)
+(* ratio: 2381 *)
+
+(* 26.144s with COND instead of AND/OR *)
+(* 25.406s with new AND/OR *)
+(* 23.614s with size_list_ALT with 15 cases *)
+(* 18.631s with custom types (COND, f_EQ still use INST_TYPE) *)
+(* 17.927s with custom types (including COND but without f_EQ) *)
+(* 17.995s with custom types everywhere *)
+(* 14.663s with nth_ALT with 10 cases *)
+(* 14.538s with funpow_ALT2 with 5 cases *)
+(* 14.487s with maps_ALT, count_ALT, map_ALT, pred_list_ALT *)
+(* 9.915s with fast arithmetic *)
+(* 9.859s with fast arithmetic + standardize *)
+(* 9.797s with APPEND_UNROLL8 *)
+(* 9.653s with nth_UNROLL15, maps_UNROLL7, count_UNROLL7 *)
+(* 3.319s with NO_ABS *)
+reset_all_counters();;
+clear_arg_lists();;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
+
+get_all_counters();;
