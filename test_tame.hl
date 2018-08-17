@@ -1,3 +1,4 @@
+(* load_path := "/Users/monad/Work/git/formal_ineqs" :: !load_path;; *)
 needs "tame_defs.hl";;
 needs "tame_defs_unrolled.hl";;
 loadt "test_tame_support.hl";;
@@ -336,6 +337,8 @@ set_extra_for_names db Extra_arg_list [
 let () =
   generate_call_counters := true;
   write_rules_names db "out.hl" const_names;;
+core_counters();;
+reset_core_counters();;
 loadt "out.hl";;
 
 (* 40.714s *)
@@ -356,9 +359,16 @@ loadt "out.hl";;
 (* 9.797s with APPEND_UNROLL8 *)
 (* 9.653s with nth_UNROLL15, maps_UNROLL7, count_UNROLL7 *)
 reset_all_counters();;
+(* reset_core_counters();; *)
 clear_arg_lists();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
+
+(* New orda improves performance *)
+(* type_of 5566376 *)
+(* type_of 2913467 with new MK_COMB *)
+(* No significant difference in performance *)
+core_counters();;
 
 time (f_tameEnumFilterBounded `0`) `100000`;;
 setify_types !eq_types;;
