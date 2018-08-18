@@ -331,14 +331,41 @@ let const_names =
     name) rules;;
 
 let db = add_thms (tame_default_db ()) rules;;
-set_extra_for_names db Extra_arg_list [
-  "APPEND"; "funpow"; "nth"; "maps"; "count"; "map"; "pred_list"; "size_list";
+(* set_extra_for_names db Extra_arg_list const_names *)
+set_extra_for_consts db Extra_memo [
+  (* `bool_to_num`; *)
+  `squanderFace`;
+  `maxGon`;
+  (* `fst:num#num->num`; *)
+  (* `is_none:(num#num)option->bool`; *)
+  (* `final_face`; *)
+  `size_list:(num)list->num`;
+  `excessAtType`;
+  `squanderVertex`;
+  `vertices_face`;
+  `heightsNewVertices`;
+  `upt`;
+  `nextElem:(num)list->num->num->num`;
+  `nextVertex`;
+  `rev:(num)list->(num)list`;
+  `APPEND:(num)list->(num)list->(num)list`;
+  `nextVertices`;
+  `member:(num)list->num->bool`;
+  `enum`;
+  (* `nth:(num)list->num->num`; *)
+  (* `faceListAt`; *)
+  `splitAtRec:num->(num)list->(num)list->(num)list#(num)list`;
+  `map:(num->(num)list)->(num)list->((num)list)list`;
+  `map:((num)list->(num)list)->((num)list)list->((num)list)list`;
+  (* `filter:(num#num->bool)->(num#num)list->(num#num)list`; *)
+  `removeKeyList:(num)list->(num#num)list->(num#num)list`;
+  (* `nth:((face)list)list->num->(face)list`; *)
+  (* `excessNotAtRec`; *)
 ];;
+
 let () =
   generate_call_counters := true;
   write_rules_names db "out.hl" const_names;;
-core_counters();;
-reset_core_counters();;
 loadt "out.hl";;
 
 (* 40.714s *)
@@ -358,9 +385,11 @@ loadt "out.hl";;
 (* 9.859s with fast arithmetic + standardize *)
 (* 9.797s with APPEND_UNROLL8 *)
 (* 9.653s with nth_UNROLL15, maps_UNROLL7, count_UNROLL7 *)
+(* 8.962s with memos *)
 reset_all_counters();;
 (* reset_core_counters();; *)
 clear_arg_lists();;
+clear_all_memos();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
 
@@ -369,6 +398,7 @@ test 1 (f_tameEnumFilterBounded `0`) `100`;;
 (* type_of 2913467 with new MK_COMB *)
 (* No significant difference in performance *)
 core_counters();;
+reset_core_counters();;
 
 time (f_tameEnumFilterBounded `0`) `100000`;;
 setify_types !eq_types;;
@@ -381,10 +411,12 @@ Hashtbl.fold (fun k v r -> k :: r) (create_memo "f_size_list") [];;
 (* maps -> up to 7 *)
 (* count -> up to 7 *)
 
-let args = lazy !(create_arg_list "f_nth_num");;
+analyze_arg_lists();;
+
+let args = lazy !(create_arg_list "f_squanderVertex");;
 let n = Lazy.force args |> length;;
 Lazy.force args |> map (length o dest_list o el 0) |> freqs;;
-Lazy.force args |> map (Nat_arith.dest_nat o el 1) |> freqs;;
+Lazy.force args |> map (Nat_arith.dest_nat o el 0) |> freqs;;
 Lazy.force args |> freqs;;
 let t = Lazy.force args |> freqs |> length;;
 float (n - t) /. float n;;

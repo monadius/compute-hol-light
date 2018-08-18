@@ -41,19 +41,27 @@ let create_counter, reset_all_counters, get_counter, get_all_counters =
        |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1) in
   create, reset_all, get, get_all;;
 
+let rec hash_string_of_term tm =
+  match tm with
+  | Var (name, _) -> name
+  | Const (name, _) -> name
+  | Comb (l, r) -> hash_string_of_term l ^ hash_string_of_term r
+  | Abs (Var(name, _), b) -> name ^ hash_string_of_term b
+  | _ -> failwith "impossible";;
+
 let create_memo, clear_all_memos =
   let memos = Hashtbl.create 100 in
   let create (name: string) =
     try Hashtbl.find memos name
     with Not_found ->
-      let memo: (string, thm)Hashtbl.t = Hashtbl.create 10000 in
+      let memo: (string list, thm)Hashtbl.t = Hashtbl.create 10000 in
       Hashtbl.add memos name memo;
       memo in
   let clear_all () =
     Hashtbl.iter (fun _ m -> Hashtbl.clear m) memos in
   create, clear_all;;
 
-let create_arg_list, clear_arg_lists =
+let create_arg_list, clear_arg_lists, all_arg_lists =
   let lists = Hashtbl.create 100 in
   let create (name: string) =
     try Hashtbl.find lists name
@@ -63,7 +71,9 @@ let create_arg_list, clear_arg_lists =
       list in
   let clear_all () =
     Hashtbl.iter (fun _ s -> s := []) lists in
-  create, clear_all;;
+  let all () =
+    Hashtbl.fold (fun name args r -> (name, !args) :: r) lists [] in
+  create, clear_all, all;;
 
 let func_of_conv const (conv: conv) =
   let f args =
@@ -1021,10 +1031,9 @@ let compile_function func =
     ]
   in
   let add_memo name arg_exprs expr =
-    (* TODO: only one argument is supported now *)
-    let key_expr = mk_let ("key", App (Raw "string_of_term", hd arg_exprs)) in
-    (* mk_let ~body:(Some expr)
-      ("()", mk_app (Raw "Hashtbl.replace", [Raw ("memo_" ^ name); key; Raw "TRUTH"])) in *)
+    (* TODO: precise memos *)
+    let key_expr = mk_let ("key", 
+      mk_app (Raw "map", [Raw "hash_string_of_term"; mk_list_expr arg_exprs])) in
     let name_expr = Raw ("memo_" ^ name) in
     let find_expr = mk_app (Raw "Hashtbl.find", [name_expr; Raw "key"]) in
     let save_expr = mk_let ("()", mk_app (Raw "Hashtbl.add", [name_expr; Raw "key"; Raw "result"])) in

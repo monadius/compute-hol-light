@@ -389,6 +389,15 @@ let freqs list =
   Hashtbl.fold (fun k v r -> (k, !v) :: r) table []
     |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1);;
 
+let analyze_arg_lists () =
+  let analyze args =
+    let n = List.length args in
+    let k = Term_list_set.of_list args |> Term_list_set.cardinal in
+    float (n - k) /. float n, n in
+  all_arg_lists ()
+    |> List.map (fun (name, args) -> name, analyze args)
+    |> List.sort (fun (_, (v1, _)) (_, (v2, _)) -> Pervasives.compare v2 v1);;
+
 #load "unix.cma";;
 
 let test n f a =
