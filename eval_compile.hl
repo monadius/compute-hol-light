@@ -132,13 +132,26 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
   let result = extract eval_tree in
   result, (!index, !abstractions);;
 
+let rec extract_cond_types eval_tree =
+  match eval_tree with
+  | Func_app { app_type = Basic_app (Const ("COND", Tyapp ("fun", [_; Tyapp ("fun", [ty; _])])));
+               applied_args = [_; _; _] as args } ->
+    insert ty (end_itlist union (map extract_cond_types args))
+  | Func_app { app_type = Abs_app (_, body); applied_args = args } ->
+    end_itlist union (map extract_cond_types (body :: args))
+  | Func_app { applied_args = args } ->
+    itlist union (map extract_cond_types args) []
+  | Refl _ -> [];;
+
 
 let enum_names s n =
   List.map (fun k -> s ^ string_of_int k) (1 -- n);;
 
-let cond_types = ref [];;
+type compile_env = {
+  cond_names: (hol_type * string) list;
+};;
 
-let compile_eval_tree =
+let compile_eval_tree env =
   let mk_refl expr = App (Raw "REFL", expr) in
   let mk_comb op_name args =
     let comb eq (arg_name, arg_type) =
@@ -170,11 +183,15 @@ let compile_eval_tree =
         mk_raw name) tms 
   in
   let compile_cond name cond_ty cond_expr then_expr else_expr =
-    let base_name =
-      let base = "COND" in
-      if tyvars cond_ty = [] then 
-        base ^ "_" ^ fix_identifier (string_of_type cond_ty) 
-      else base in
+    let inst_true, inst_false =
+      let th_name = assocd cond_ty env.cond_names "COND" in
+      let inst_vars = App (Raw "INST", Raw "[then_tm, then_var; else_tm, else_var]") in
+      let inst_expr th =
+        if th_name <> "COND" then 
+          App (inst_vars, Raw th)
+        else
+          App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; Raw th])) in
+      inst_expr (th_name ^ "_T"), inst_expr (th_name ^ "_F") in
     let type_expr = mk_let ("ty", App (Raw "type_of", Raw "then_tm")) in
     let t_var = mk_let ("then_var", App (Raw "mk_var", mk_tuple [String "t"; Raw "ty"])) in
     let e_var = mk_let ("else_var", App (Raw "mk_var", mk_tuple [String "e"; Raw "ty"])) in
@@ -182,14 +199,12 @@ let compile_eval_tree =
     let cond_th =
       mk_let ("th0", mk_comb "op" ["cond_eq", Arg_theorem; "then_tm", Arg_term; "else_tm", Arg_term]) in
     let then_branch = chain_let [
-      (* mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_T)"); *)
-      mk_let ("th1", App (Raw "INST[then_tm, then_var; else_tm, else_var]", Raw (base_name ^ "_T")));
+      mk_let ("th1", inst_true);
       mk_let ("then_eq", then_expr);
       Raw "TRANS (TRANS th0 th1) then_eq"
     ] in
     let else_branch = chain_let [
-      (* mk_let ("th1", Raw "INST[then_tm, then_var; else_tm, else_var] (INST_TYPE[ty, aty] COND_F)"); *)
-      mk_let ("th1", App (Raw "INST[then_tm, then_var; else_tm, else_var]", Raw (base_name ^ "_F")));
+      mk_let ("th1", inst_false);
       mk_let ("else_eq", else_expr);
       Raw "TRANS (TRANS th0 th1) else_eq"
     ] in
@@ -267,7 +282,6 @@ let compile_eval_tree =
     match t with
     | Func_app {app_type = Basic_app (Const ("COND", Tyapp ("fun", [_; Tyapp ("fun", [ty; _])])));
                 applied_args = [cond_arg; then_arg; else_arg]} ->
-      cond_types := ty :: !cond_types;
       compile_cond name ty (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
     | Func_app {app_type = Basic_app (Const ("/\\", _)); applied_args = [arg1; arg2]} ->
       compile_and name (compile "a1" arg1) (compile "a2" arg2)
@@ -310,7 +324,7 @@ type func_info = {
   cases: case_info list;
 };;
 
-let compile_rhs ty_inst case =
+let compile_rhs env ty_inst case =
   let var_exprs =
     case.vars 
     |> filter (fun (v, _) -> tyvars (type_of v) <> [])
@@ -334,7 +348,7 @@ let compile_rhs ty_inst case =
   if is_eval_tree_refl case.rhs then
     chain_let (var_exprs @ [inst_expr])
   else
-    let expr = compile_eval_tree "rhs" case.rhs in
+    let expr = compile_eval_tree env "rhs" case.rhs in
     chain_let (var_exprs @ [
       mk_let ("th", inst_expr);
       mk_let ("rhs", Raw "rand (concl th)");
@@ -342,7 +356,7 @@ let compile_rhs ty_inst case =
       mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
     ]);;
 
-let compile_function func =
+let compile_function env func =
   let var_name vars i = fst (dest_var (fst (List.nth vars i))) in
   let compile_case ty_inst case =
     let vars = case.vars in
@@ -356,7 +370,7 @@ let compile_function func =
         List.fold_left (fun l r -> App (Raw "Comb", Tuple [l; r])) cst 
           (List.map (fun p -> compile_pat (p, ty)) ps) in
     let pats = List.map compile_pat case.args in
-    let body = compile_rhs ty_inst case in
+    let body = compile_rhs env ty_inst case in
     pats, body
   in
   let get_ty_exprs arg_exprs =
@@ -532,6 +546,30 @@ let compile_rules db rules =
     let e2 = App (Raw "map (fun i -> type_of (el i (fixed_args @ args)))", mk_int_list func.poly_indices) in
     mk_let (func.arg_ty_name, chain_let [base_args_expr; fixed_args_expr; e2]) 
   in
+  let get_cond_th_exprs cond_names =
+    let cond_expr ty base_name suffix =
+      let inst_list_expr = Raw (Format.sprintf "[`:%s`, aty]" (string_of_type ty)) in
+      let inst_expr = mk_app (Raw "INST_TYPE", [inst_list_expr; Raw ("COND" ^ suffix)]) in
+      mk_let (base_name ^ suffix, App (Raw "standardize", inst_expr)) in
+    cond_names
+      |> List.map (fun (ty, name) -> [cond_expr ty name "_T"; cond_expr ty name "_F"])
+      |> List.concat
+  in
+  let create_compile_env fs =
+    let cond_tys = 
+      List.map (fun f -> f.cases) fs 
+        |> List.concat
+        |> List.fold_left (fun r case -> union r (extract_cond_types case.rhs)) []
+        |> List.filter (fun ty -> tyvars ty = []) in
+    let cond_names =
+      cond_tys
+        |> List.fold_left (fun (r, names) ty ->
+            let name' = "COND_" ^ fix_identifier (string_of_type ty) in
+            let name = variant_name names name' in
+            ((ty, name) :: r, name :: names)) ([], [])
+        |> fst in
+    { cond_names = cond_names }
+  in
   let name_vars vars =
     (* TODO: consider types if names coincide *)
     map (fun v -> v, "var_" ^ fst (dest_var v)) vars 
@@ -614,15 +652,19 @@ let compile_rules db rules =
       extra = abs_rw.extra;
       cases = [abs_case];
     }) (snd abs) in
+  let all_fs = abs_fs @ fs in
+  let env = create_compile_env all_fs in
+  let cond_th_exprs = get_cond_th_exprs env.cond_names in
   let ty_exprs =
-    filter (fun f -> f.poly_indices <> []) (abs_fs @ fs)
+    filter (fun f -> f.poly_indices <> []) all_fs
     |> map get_arg_types_expr in
   let f_names = map (fun f -> f.name) fs in
   let extra_exprs = get_extra_exprs fs in
-  let f_exprs = map compile_function (abs_fs @ fs) in
+  let f_exprs = map (compile_function env) all_fs in
   let result_expr = mk_tuple (map mk_raw f_names) in
   let main_expr =
-    let prelude = th_exprs @ var_exprs @ abs_th_exprs @ ty_exprs @ extra_exprs in
+    let prelude = th_exprs @ var_exprs @ abs_th_exprs 
+                  @ cond_th_exprs @ ty_exprs @ extra_exprs in
     let f_expr = if List.length f_exprs > 1 then mk_let_and f_exprs else hd f_exprs in
     chain_let (prelude @ [f_expr; result_expr]) in
   mk_let (String.concat ", " f_names, main_expr);;
@@ -634,11 +676,35 @@ let compile_term db f_name tm =
     let ty_str = Format.sprintf "`:%s`" (string_of_type ty) in
     mk_let (var_name, 
       App (Raw "standardize_tm", 
-        App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) in
+        App (Raw "mk_var", mk_tuple [String name; Raw ty_str]))) 
+  in
   let get_tm_expr tm =
     let ty = type_of tm in
     App (Raw "parse_term", 
-      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) in
+      String (Format.sprintf "(%s):%s" (string_of_term tm) (string_of_type ty))) 
+  in
+  let get_cond_th_exprs cond_names =
+    let cond_expr ty base_name suffix =
+      let inst_list_expr = Raw (Format.sprintf "[`:%s`, aty]" (string_of_type ty)) in
+      let inst_expr = mk_app (Raw "INST_TYPE", [inst_list_expr; Raw ("COND" ^ suffix)]) in
+      mk_let (base_name ^ suffix, App (Raw "standardize", inst_expr)) in
+    cond_names
+      |> List.map (fun (ty, name) -> [cond_expr ty name "_T"; cond_expr ty name "_F"])
+      |> List.concat
+  in
+  let create_compile_env eval_tree =
+    let cond_tys = 
+      extract_cond_types eval_tree
+        |> List.filter (fun ty -> tyvars ty = []) in
+    let cond_names =
+      cond_tys
+        |> List.fold_left (fun (r, names) ty ->
+            let name' = "COND_" ^ fix_identifier (string_of_type ty) in
+            let name = variant_name names name' in
+            ((ty, name) :: r, name :: names)) ([], [])
+        |> fst in
+    { cond_names = cond_names }
+  in
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
     let path = find_full_path ((=) abs_tm) base_tm in
@@ -648,7 +714,8 @@ let compile_term db f_name tm =
         App (Raw "list_mk_comb", 
           mk_tuple [mk_app (Raw "follow_full_path", [String path; Raw base_name]);
                     mk_list_expr (map get_tm_expr args)])) in
-    mk_let (abs_rw.f_name ^ "_th", def_expr) in
+    mk_let (abs_rw.f_name ^ "_th", def_expr) 
+  in
   let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let base_args, body_tm = strip_gabs abs_tm in
     let fixed_args = frees abs_tm in
@@ -661,9 +728,11 @@ let compile_term db f_name tm =
       (* TODO: should be the same as the rhs of the corresponding abs_th;
                it is better to use this theorem here *)
       rhs_tm = body_tm;
-    } in
-  let eval_tree = build_eval_tree db tm |> optimize_eval_tree in
-  let eval_tree, (_, abs) = extract_abs (0, []) (tm, "tm") eval_tree in
+    } 
+  in
+  let eval_tree' = build_eval_tree db tm |> optimize_eval_tree in
+  let env = create_compile_env eval_tree' in
+  let eval_tree, (_, abs) = extract_abs (0, []) (tm, "tm") eval_tree' in
   let vars' = map (fun tm, _ ->
                     let args, _ = strip_gabs tm in
                     flat (map frees args)) abs 
@@ -682,11 +751,12 @@ let compile_term db f_name tm =
       extra = abs_rw.extra;
       cases = [abs_case];
     } in
-    compile_function abs_f) abs in
+    compile_function env abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
-  let expr = compile_eval_tree "tm" eval_tree in
+  let cond_th_exprs = get_cond_th_exprs env.cond_names in
+  let expr = compile_eval_tree env "tm" eval_tree in
   mk_let (f_name,
-    chain_let (tm_expr :: abs_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
+    chain_let (tm_expr :: abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 
 
 let print_rules db fmt ?term rules =
