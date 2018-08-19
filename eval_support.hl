@@ -1,0 +1,205 @@
+type eval_error = {
+  failure_msg: string;
+  eval_name: string;
+  eval_args: term list;
+};;
+
+exception Eval_error of eval_error list;;
+
+let eval_error msg name args =
+  raise (Eval_error [{
+    failure_msg = msg;
+    eval_name = name;
+    eval_args = args;
+  }]);;
+
+let eval_error_propagate errs name args =
+  raise (Eval_error ({
+    failure_msg = (match errs with err :: _ -> err.failure_msg | _ -> "");
+    eval_name = name;
+    eval_args = args;
+  } :: errs));;
+
+let create_counter, reset_all_counters, get_counter, get_all_counters =
+  let counters = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find counters name
+    with Not_found ->
+      let counter = ref 0 in
+      Hashtbl.add counters name counter;
+      counter in
+  let reset_all () =
+    Hashtbl.iter (fun _ c -> c := 0) counters in
+  let get name = !(Hashtbl.find counters name) in
+  let get_all () =
+    [] |> Hashtbl.fold (fun name v ls -> (name, !v) :: ls) counters
+       |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1) in
+  create, reset_all, get, get_all;;
+
+let rec hash_string_of_term tm =
+  match tm with
+  | Var (name, _) -> name
+  | Const (name, _) -> name
+  | Comb (l, r) -> hash_string_of_term l ^ hash_string_of_term r
+  | Abs (Var(name, _), b) -> name ^ hash_string_of_term b
+  | _ -> failwith "impossible";;
+
+let create_memo, clear_all_memos =
+  let memos = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find memos name
+    with Not_found ->
+      let memo: (string list, thm)Hashtbl.t = Hashtbl.create 10000 in
+      Hashtbl.add memos name memo;
+      memo in
+  let clear_all () =
+    Hashtbl.iter (fun _ m -> Hashtbl.clear m) memos in
+  create, clear_all;;
+
+let create_arg_list, clear_arg_lists, all_arg_lists =
+  let lists = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find lists name
+    with Not_found ->
+      let list = ref ([]: term list list) in
+      Hashtbl.add lists name list;
+      list in
+  let clear_all () =
+    Hashtbl.iter (fun _ s -> s := []) lists in
+  let all () =
+    Hashtbl.fold (fun name args r -> (name, !args) :: r) lists [] in
+  create, clear_all, all;;
+
+(* A performance improvement trick from calc_num.ml *)
+let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =
+  let cache = Hashtbl.create 100 in
+  let enabled = ref true in
+  let find t = 
+    try Hashtbl.find cache t 
+    with Not_found -> Hashtbl.add cache t t; t in
+  let rec replace tm =
+    match tm with
+    | Var _ | Const _ -> find tm
+    | Comb (s, t) -> (* find @@*) mk_comb (replace s, replace t)
+    | Abs (v, b) -> (* find @@*) mk_abs (replace v, replace b) in
+  let st th =
+    let concl' = replace (concl th) in
+    EQ_MP (REFL concl') th in
+  let get () = Hashtbl.fold (fun _ t ts -> t :: ts) cache [] in
+  let reset () = Hashtbl.clear cache in
+  let enable flag = enabled := flag in
+    (fun th -> if !enabled then st th else th), 
+    (fun tm -> if !enabled then replace tm else tm), 
+    get, reset, enable;;
+
+let strip_comb_gabs tm =
+  match strip_comb tm with
+  | Const ("GABS", _) as op, a1 :: args -> mk_comb (op, a1), args
+  | op, args as r -> r;;
+
+let inst_type_thms tm ths =
+  let inst_type th =
+    let op, _ = concl th |> dest_eq |> fst |> strip_comb_gabs in
+    let tyi = type_match (type_of op) (type_of tm) [] in
+    INST_TYPE tyi th in
+  List.map inst_type ths;;
+
+(* The same as find_path but also considers variables in Abs *)
+let find_full_path =
+  let rec find p tm =
+    match tm with
+    | _ when p tm -> []
+    | Abs (v, b) -> (try "b" :: find p b with Failure _ -> "v" :: find p v)
+    | Comb (l, r) -> (try "r" :: find p r with Failure _ -> "l" :: find p l)
+    | _ -> failwith "find_full_path" in
+  fun p tm ->
+    implode (find p tm);;
+
+let follow_full_path =
+  let rec follow s tm =
+    match s with
+    | [] -> tm
+    | "v" :: t -> follow t (bndvar tm)
+    | "b" :: t -> follow t (body tm)
+    | "r" :: t -> follow t (rand tm)
+    | "l" :: t -> follow t (rator tm)
+    | _ -> failwith "follow_full_path" in
+  fun s tm ->
+    follow (explode s) tm;;
+
+let dest_pattern =
+  let dest_geq = dest_binary "GEQ" in
+  let dest_simple_pattern tm =
+    let _, body = strip_abs tm |> snd |> strip_exists in
+    match strip_comb body with
+    | Const ("_UNGUARDED_PATTERN", _), [lhs; rhs] ->
+      fst (dest_geq lhs), None, fst (dest_geq rhs)
+    | Const ("_GUARDED_PATTERN", _), [lhs; guard; rhs] ->
+      fst (dest_geq lhs), Some guard, fst (dest_geq rhs)
+    | _ -> failwith ("dest_simple_pattern: " ^ string_of_term tm) in
+  let rec dest tm =
+    match tm with
+    | Comb (Comb (Const ("_SEQPATTERN", _), pat), rest) ->
+      dest_simple_pattern pat :: dest rest
+    | Abs _ -> [dest_simple_pattern tm]
+    | _ -> failwith ("dest_pattern: " ^ string_of_term tm) in
+  dest;;
+
+let dest_match tm =
+  match strip_comb tm with
+  | Const ("_MATCH", _), [arg; pat] -> Some arg, dest_pattern pat
+  | Const ("_FUNCTION", _), [pat] -> None, dest_pattern pat
+  | Const ("_FUNCTION", _), [pat; arg] -> Some arg, dest_pattern pat
+  | _ -> failwith "dest_match";;
+
+let eliminate_top_match th =
+  let tm = concl th in
+  let _, rhs = dest_eq tm in
+  match dest_match rhs with
+  | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
+    map (fun (p, _, _) -> 
+      let eq = (TOP_DEPTH_CONV MATCH_CONV) (subst[p, arg] tm) in
+      let th0 = INST[p, arg] th in
+      EQ_MP eq th0) pats
+  | _ -> failwith "eliminate_top_match";;
+
+let rec GEN_BETAS_CONV tm = 
+  (GEN_BETA_CONV ORELSEC (RATOR_CONV GEN_BETAS_CONV THENC GEN_BETA_CONV)) tm;;
+
+let rec BODY_CONJUNCTS th =
+  if is_forall (concl th) then
+    BODY_CONJUNCTS (SPEC_ALL th)
+  else if is_conj (concl th) then
+    BODY_CONJUNCTS (CONJUNCT1 th) @ BODY_CONJUNCTS (CONJUNCT2 th)
+  else [th];;
+
+let eq_intro thm =
+  if is_eq (concl thm) then thm else
+  if is_neg (concl thm) then EQF_INTRO thm
+  else EQT_INTRO thm;;
+  
+let extra_rewrites =
+  (* let and_th = MESON[] `!P Q. P /\ Q <=> if P then Q else F` in
+  let or_th = MESON[] `!P Q. P \/ Q <=> if P then T else Q` in *)
+  let not_cond_th = MESON[] `!P X Y. (if ~P then X else Y) <=> (if P then Y else X)` in
+  fun th -> PURE_REWRITE_RULE[(*and_th; or_th;*) not_cond_th; GT; GE] th;;
+
+let split_extra_rules = ref ([]: (thm -> thm)list);;
+
+let add_extra_split_rule rule =
+  if List.memq rule !split_extra_rules then ()
+  else
+    split_extra_rules := !split_extra_rules @ [rule];;
+
+let split_thm th =
+  let split th =
+    let ths = try eliminate_top_match th with _ -> [th] in
+    List.map eq_intro ths in
+  let extra_rules = rev_itlist (o) !split_extra_rules I in
+  BODY_CONJUNCTS th 
+    |> List.map split 
+    |> flat
+    |> List.map extra_rewrites
+    |> List.map extra_rules;;
+
+
