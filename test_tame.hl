@@ -345,7 +345,7 @@ set_extra_for_consts db Extra_memo [
   `vertices_face`;
   `heightsNewVertices`;
   `upt`;
-  `nextElem:(num)list->num->num->num`;
+  (* `nextElem:(num)list->num->num->num`; *)
   `nextVertex`;
   `rev:(num)list->(num)list`;
   `APPEND:(num)list->(num)list->(num)list`;
