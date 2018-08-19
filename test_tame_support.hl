@@ -20,7 +20,7 @@ let numeral = Nat_arith.replace_numerals;;
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;
 
-needs "compiled_eval.hl";;
+needs "eval_compile.hl";;
 
 let () =
   add_extra_split_rule Nat_arith.REPLACE_NUMERALS;;
@@ -65,41 +65,6 @@ let T_AND = (standardize o TAUT) `T /\ P <=> P` and
     F_AND = (standardize o TAUT) `F /\ P <=> F` and
     T_OR = (standardize o TAUT) `T \/ P <=> T` and
     F_OR = (standardize o TAUT) `F \/ P <=> P`;;
-
-let COND_face_T = (standardize o INST_TYPE[`:face`, aty]) COND_T and
-    COND_face_F = (standardize o INST_TYPE[`:face`, aty]) COND_F and
-    COND_graph_T = (standardize o INST_TYPE[`:graph`, aty]) COND_T and
-    COND_graph_F = (standardize o INST_TYPE[`:graph`, aty]) COND_F and
-    COND_face_list_T = (standardize o INST_TYPE[`:(face)list`, aty]) COND_T and
-    COND_face_list_F = (standardize o INST_TYPE[`:(face)list`, aty]) COND_F and
-    COND_graph_list_T = (standardize o INST_TYPE[`:(graph)list`, aty]) COND_T and
-    COND_graph_list_F = (standardize o INST_TYPE[`:(graph)list`, aty]) COND_F and
-    COND_face_list_list_T = (standardize o INST_TYPE[`:((face)list)list`, aty]) COND_T and
-    COND_face_list_list_F = (standardize o INST_TYPE[`:((face)list)list`, aty]) COND_F and
-    COND_num_list_list_list_T = (standardize o INST_TYPE[`:(((num)list)list)list`, aty]) COND_T and
-    COND_num_list_list_list_F = (standardize o INST_TYPE[`:(((num)list)list)list`, aty]) COND_F and
-    COND_num_list_list_T = (standardize o INST_TYPE[`:((num)list)list`, aty]) COND_T and
-    COND_num_list_list_F = (standardize o INST_TYPE[`:((num)list)list`, aty]) COND_F and
-    COND_num_list_T = (standardize o INST_TYPE[`:(num)list`, aty]) COND_T and
-    COND_num_list_F = (standardize o INST_TYPE[`:(num)list`, aty]) COND_F and
-    COND_num_option_list_T = (standardize o INST_TYPE[`:((num)option)list`, aty]) COND_T and
-    COND_num_option_list_F = (standardize o INST_TYPE[`:((num)option)list`, aty]) COND_F and
-    COND_num_num_list_T = (standardize o INST_TYPE[`:(num#num)list`, aty]) COND_T and
-    COND_num_num_list_F = (standardize o INST_TYPE[`:(num#num)list`, aty]) COND_F and
-    COND_num_num_num_list_list_tries_list_T = (standardize o INST_TYPE[`:(num#(num,((num)list)list)tries)list`, aty]) COND_T and
-    COND_num_num_num_list_list_tries_list_F = (standardize o INST_TYPE[`:(num#(num,((num)list)list)tries)list`, aty]) COND_F and
-    COND_num_T = (standardize o INST_TYPE[`:num`, aty]) COND_T and
-    COND_num_F = (standardize o INST_TYPE[`:num`, aty]) COND_F and
-    COND_num_option_T = (standardize o INST_TYPE[`:(num)option`, aty]) COND_T and
-    COND_num_option_F = (standardize o INST_TYPE[`:(num)option`, aty]) COND_F and
-    COND_num_num_option_T = (standardize o INST_TYPE[`:(num#num)option`, aty]) COND_T and
-    COND_num_num_option_F = (standardize o INST_TYPE[`:(num#num)option`, aty]) COND_F and
-    COND_num_num_list_list_tries_option_T = (standardize o INST_TYPE[`:((num,((num)list)list)tries)option`, aty]) COND_T and
-    COND_num_num_list_list_tries_option_F = (standardize o INST_TYPE[`:((num,((num)list)list)tries)option`, aty]) COND_F and
-    COND_num_list_num_list_T = (standardize o INST_TYPE[`:(num)list#(num)list`, aty]) COND_T and
-    COND_num_list_num_list_F = (standardize o INST_TYPE[`:(num)list#(num)list`, aty]) COND_F and
-    COND_num_num_list_list_tries_T = (standardize o INST_TYPE[`:(num,((num)list)list)tries`, aty]) COND_T and
-    COND_num_num_list_list_tries_F = (standardize o INST_TYPE[`:(num,((num)list)list)tries`, aty]) COND_F;;
 
 (* let f_EQ_num =
   let const = standardize_tm `(=):num->num->bool` in

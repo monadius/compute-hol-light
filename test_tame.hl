@@ -331,7 +331,6 @@ let const_names =
     name) rules;;
 
 let db = add_thms (tame_default_db ()) rules;;
-(* set_extra_for_names db Extra_arg_list const_names *)
 set_extra_for_consts db Extra_memo [
   (* `bool_to_num`; *)
   `squanderFace`;
@@ -364,7 +363,8 @@ set_extra_for_consts db Extra_memo [
 ];;
 
 let () =
-  generate_call_counters := true;
+  set_extra_for_names db Extra_counter const_names;
+  (* set_extra_for_names db Extra_arg_list const_names; *)
   write_rules_names db "out.hl" const_names;;
 loadt "out.hl";;
 
