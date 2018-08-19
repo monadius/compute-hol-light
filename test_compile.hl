@@ -1,26 +1,166 @@
-needs "compiled_eval.hl";;
+needs "eval_compile.hl";;
 
-let db = add_thms (empty_db ()) 
-  ["ARITH_SUC", ARITH_SUC; 
-   "ARITH_ADD", ARITH_ADD;
-   "ARITH_MULT", ARITH_MULT;
-   "ARITH_GE", ARITH_GE;
-   "ARITH_GT", ARITH_GT;
-  ];;
+let true_tm = standardize_tm `T`;;
+let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
+let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
 
-let r = entries db |> C List.nth 1 |> snd |> compile db;;
-print_expr Format.std_formatter r;;
+let p_var_bool = `P: bool`;;
+let T_AND = TAUT `T /\ P <=> P` and
+    F_AND = TAUT `F /\ P <=> F` and
+    T_OR = TAUT `T \/ P <=> T` and
+    F_OR = TAUT `F \/ P <=> P`;;
 
-entries db;;
-let r = entries db |> hd |> snd;;
-print_expr Format.std_formatter @@ compile_prelude r;;
-let c = compile_rhs db (hd (r.rewrites));;
-print_expr Format.std_formatter c;;
+(* Test db 1 *)
+
+let db = add_thms (empty_db()) [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_GE", ARITH_GE, [];
+  "ARITH_GT", ARITH_GT, [];
+  "HD", HD, [`HD:(num)list->num`; `HD:(A)list->A`];
+  "TL", TL, [`TL:(A)list->(A)list`; `TL:(num)list->(num)list`];
+  "MAP", MAP, [`MAP:(num->num)->(num)list->(num)list`];
+  "FILTER", FILTER, [
+    `FILTER:(num->bool)->(num)list->(num)list`; 
+    `FILTER:(A->bool)->(A)list->(A)list`;
+  ];
+  (* "AND_CLAUSES", AND_CLAUSES, [];
+  "OR_CLAUSES", OR_CLAUSES, []; *)
+  "NOT_CLAUSES", NOT_CLAUSES, [];
+  "ALL", ALL, [];
+  "EX", EX, [];
+  (* "PAIR_EQ", PAIR_EQ; *)
+  (* "injectivity \"option\"", injectivity "option"; *)
+  (* "lambda4", lambda4;
+  "lambda5", lambda5; *)
+];;
+
+List.iter (set_rule db) [`(=):A->A->bool`; `>`; `>=`];;
+
+write_rules_names db "out2.hl" [
+  "FILTER";
+]
+~term:`FILTER (\x. if x > 2 then T else F) [1;2;3;4325;452;345]`;;
+
+needs "default_db.hl";;
+loadt "out2.hl";;
+
+set_extra_for_names db Extra_memo ["HD"; "TL"; "MAP"];;
+write_rules_names db "out2.hl" [
+  "HD"; "TL"; "MAP"; "ALL"; "EX"
+] ~term:`EX ((=) 3) [1;2;3]`;;
+
+loadt "out2.hl";;
+
+(* Test db 2 *)
+
+let lambda1 = new_definition `lambda1 x y = (\x y. x + y) y x`;;
+let lambda2 = new_definition `lambda2 x a = (\x y. x + y) a a + (\x. x + (\y. 1) x) x`;;
+let lambda3 = new_definition `lambda3 x a = (\(x, y) z. x + y * z) (a, a) x`;;
+let lambda4 = new_definition `lambda4 x = (\x. x) x`;;
+let lambda5 = new_definition `lambda5 x y = (\x (a,b). x a) x y`;;
+let lambda6 = new_definition `lambda6 n = (\x. n + x) 3`;;
+let lambda7 = new_definition `lambda7 n = (\x y. n) 2 n`;;
+let lambda8 = new_definition `lambda8 n = (\x. SUC ((\x. n) 3)) n`;;
+let lambda9 = new_definition `lambda9 f = (\x. f x + 3) (f 2)`;;
+let lambda10 = new_definition `lambda10 y = (\x. (x,y)) 3`;;
+
+let db = add_thms (empty_db ()) [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "ARITH_MULT", ARITH_MULT, [];
+  "lambda1", lambda1, [];
+  "lambda2", lambda2, [];
+  "lambda3", lambda3, [];
+  "lambda6", lambda6, [];
+  "lambda7", lambda7, [];
+  "lambda8", lambda8, [];
+  "lambda9", lambda9, [];
+  "lambda10", lambda10, [];
+];;
+
+write_rules_names db "out2.hl" [
+  "SUC"; "+"; 
+  "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10";
+]
+~term:`lambda7 (a:A)`;;
+
+loadt "out2.hl";;
+
+write_rules_consts db "out2.hl" [
+  [`SUC`; `+`]; 
+  [`lambda6`];
+]
+~term:`lambda6 4`;;
+
+loadt "out2.hl";;
+
+compile_rules db (get_entries db ["lambda1"; "lambda2"; "lambda3"])
+    |> print_expr Format.std_formatter;;
+
+
+(* Test db 3 *)
+
+let APPEND' = INST_TYPE[`:num`, `:A`] APPEND;;
+let MAP' = INST_TYPE[`:num`, `:A`; `:num`, `:B`] MAP;;
+let my_map = new_definition `my_map (l:(num)list) = MAP SUC l`;;
+let my_map2 = new_definition `my_map2 (l:(num)list) = MAP ((+) 2) l`;;
+let my_map3 = new_definition `my_map3 n (l:(num)list) = MAP ((+) (SUC n)) l`;;
+let my_map4 = new_definition `my_map4 l = MAP (CONS 1) l`;;
+let my_map5 = new_definition `my_map5 l = MAP BIT1 l`;;
+let test_f = new_definition `test_f (f:(num->num)->(num)list->(num)list) g = f g [1;2]`;;
+
+let db = add_thms (empty_db ()) [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_PRE", ARITH_PRE, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "ARITH_MULT", ARITH_MULT, [];
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_GE", ARITH_GE, [];
+  "ARITH_GT", ARITH_GT, [];
+  "APPEND'", APPEND', [];
+  "MAP'", MAP', [];
+  "my_map", my_map, [];
+  "my_map2", my_map2, [];
+  "my_map3", my_map3, [];
+  "my_map4", my_map4, [];
+  "my_map5", my_map5, [];
+  "test_f", test_f, [];
+];;
+
+build_eval_tree db `HD`;;
+
+
+(* Other tests *)
+
+let get_var var th =
+  let tm = concl th in
+  follow_path (find_path ((=) var) tm) tm;;
+
+let db = empty_db();;
+set_rule db `/\`;;
+set_rule db `MAP`;;
+set_rule db `MAP:(num->B)->(num)list->(B)list`;;
+set_rule db `MAP:(A->num)->(A)list->(num)list`;;
+set_rule db `MAP:(num->B#C)->(num)list->(B#C)list`;;
+find_exact_entry db `MAP:(num->B)->(num)list->(B)list`;;
+find_most_specific_entry db `MAP:(num->B)->(num)list->(B)list`;;
+find_exact_entry db `MAP:(A->num)->(A)list->(num)list`;;
+find_most_specific_entry db `MAP:(num->B#C)->(num)list->(B#C)list`;;
+find_most_specific_entry db `MAP:(num->B#real)->(num)list->(B#real)list`;;
+
+let t0 = `:(A->B)->(A)list->(B)list` and
+    t1 = `:(num->B)->(num)list->(B)list` and
+    t2 = `:(num->B#C)->(num)list->(B#C)list` and
+    t3 = `:(num->real#C)->(num)list->(real#C)list`;;
+
+type_match t0 t3 [];;
+type_match t1 t3 [];;
+type_match t2 t3 [];;
 
 
 #load "unix.cma";;
 
-let test f n a =
+let test n f a =
   let start = Unix.gettimeofday() in
   let r = f a in
   for i = 2 to n do
@@ -30,9 +170,258 @@ let test f n a =
   r, finish -. start;;
 
 (* 0.277 *)
-test f_SUC 10000 `255`;;
+test 10000 f_SUC `255`;;
 (* 0.084 *)
-test NUM_SUC_CONV 10000 `SUC 255`;;
+test 10000 NUM_SUC_CONV `SUC 255`;;
 
-test (f_ADD `100`) 10000 `248294`;;
-test NUM_ADD_CONV 10000 `100 + 248294`;;
+(* 0.354 s*)
+test 10000 (f_ADD `100`) `248294`;;
+test 10000 NUM_ADD_CONV `100 + 248294`;;
+
+test 10000 (f_MAP (`SUC`, f_SUC)) `[0;1;2;3;4;5]`;;
+test 3000000 (map succ) [0;1;2;3;4;5];;
+
+
+let th = last (split_thm ARITH_MULT);;
+let m_var = `m:num` and
+    n_var = `n:num`;;
+
+let [m'_var; n'_var] = frees (concl th);;
+
+let m_tm = `1` and n_tm = `2`;;
+
+(* 0.21s *)
+test 100000 (INST[m_tm, m_var; n_tm, n_var]) th;;
+(* 0.190s *)
+test 100000 (INST[m_tm, m'_var; n_tm, n'_var]) th;;
+
+
+compile_term db "t" `MAP (\x. 1 + x) [1;2;3]` |> print_expr Format.std_formatter;;
+
+let t =
+  let tm = `MAP ((+) 1) [1; 2; 3]` in
+  let op, a2 = dest_comb tm in
+  let op, a1 = dest_comb op in
+  let a1 = (a1, fun tm1 ->
+                  let op, a1 = dest_comb a1 in
+                  f_ADD a1 tm1) in
+  f_MAP a1 a2;;
+
+(* 0.861 *)
+(* 0.934 if standardize is disabled *)
+test 20000 (f_num_MAP (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
+
+(* 2.302 *)
+test 20000 (f_MAP1 (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
+
+(* 2.140 *)
+test 20000 (f_MAP2 (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
+
+test 20000 (f_MAP (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
+
+
+(* Hash table tests *)
+
+let tms = Array.init 10000 (fun i -> mk_small_numeral i);;
+let cache1 = 
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i tm ->
+    Hashtbl.add cache tm i) tms;
+  cache;;
+
+let strs = Array.init 10000 (fun i -> string_of_term tms.(i));;
+let cache2 = 
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i s ->
+    Hashtbl.add cache s i) strs;
+  cache;;
+
+let ll = Array.to_list @@ Array.init 1000 (fun i -> Hashtbl.hash tms.(i));;
+length ll;;
+(* 16 *)
+length (setify ll);;
+
+let rec key_of_term tm =
+  match tm with
+  | Var (name, _) -> "Var[" ^ name ^ "]"
+  | Const (name, _) -> "Const[" ^ name ^ "]"
+  | Comb (l, r) -> "Comb[" ^ key_of_term l ^ ";" ^ key_of_term r ^ "]"
+  | Abs (Var(name, _), b) -> "Abs[" ^ name ^ ";" ^ key_of_term b ^ "]"
+  | _ -> failwith "impossible";;
+
+let rec hash_string_of_term tm =
+  match tm with
+  | Var (name, _) -> name
+  | Const (name, _) -> name
+  | Comb (l, r) -> hash_string_of_term l ^ hash_string_of_term r
+  | Abs (Var(name, _), b) -> name ^ hash_string_of_term b
+  | _ -> failwith "impossible";;
+
+let hash_string_of_term =
+  let rec hash = function
+  | Var (name, _) | Const (name, _) -> name
+  | Comb (l, r) | Abs (l, r) -> hash l ^ hash r in
+  hash;;
+
+let rec hash_of_term tm =
+  match tm with
+  | Var (name, _) | Const (name, _) -> Hashtbl.hash name
+  | Comb (l, r) -> hash_of_term l lxor hash_of_term r
+  | Abs (v, b) -> hash_of_term v lxor hash_of_term b;;
+
+let hash_of_term2 =
+  let rec hash = function
+    | Var _ | Const _ -> 31
+    | Comb (l, r) | Abs (l, r) -> hash l * 47 + hash r * 7 in
+  hash;;
+
+let rec hash_string_of_term3 =
+  let rec hash n = function
+  | _ when n <= 0 -> ""
+  | Var (name, _) | Const (name, _) -> name
+  | Comb (l, r) | Abs (l, r) -> hash (n - 1) l ^ hash (n - 1) r in
+  hash;;
+
+
+(* slower than hash_string_of_term *)
+let hash_string_of_term2 tm =
+  let buf = Buffer.create 100 in
+  let rec hash = function
+  | Var (name, _) | Const (name, _) -> Buffer.add_string buf name
+  | Comb (l, r) | Abs (l, r) -> hash l; hash r in
+  hash tm; 
+  Buffer.contents buf;;
+
+let hash_string_of_term2 =
+  let rec hash buf = function
+  | Var (name, _) | Const (name, _) -> Buffer.add_string buf name
+  | Comb (l, r) | Abs (l, r) -> hash buf l; hash buf r in
+  fun tm ->
+    let buf = Buffer.create 100 in
+    hash buf tm; Buffer.contents buf;;
+
+
+module Term_hash = struct
+  type t = term
+  let equal t1 t2 = t1 = t2
+  (* let hash t = Hashtbl.hash (string_of_term t) *)
+  let hash t = Hashtbl.hash (hash_string_of_term t)
+  (* let hash t = hash_of_term t *)
+  (* let hash t = hash_of_term2 t *)
+  (* let hash t = Hashtbl.hash (hash_string_of_term3 20 t) *)
+end;;
+
+module Term_hashtbl = Hashtbl.Make(Term_hash);;
+
+let setify_terms tms =
+  let hash = Term_hashtbl.create 100000 in
+  List.iter (fun tm -> Term_hashtbl.replace hash tm 1) tms;
+  Term_hashtbl.fold (fun tm _ r -> tm :: r) hash [];;
+
+let cache3 =
+  let cache = Term_hashtbl.create 10000 in
+  Array.iteri (fun i tm -> Term_hashtbl.add cache tm i) tms;
+  cache;;
+
+let cache4 = 
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i t ->
+    Hashtbl.add cache (hash_string_of_term t) i) tms;
+  cache;;
+
+let cache4_key = 
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i t ->
+    Hashtbl.add cache (key_of_term t) i) tms;
+  cache;;
+
+
+let cache4_tuple =
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i t ->
+    let t2 = tms.(if i = 0 then 9999 else i - 1) in
+    Hashtbl.add cache (hash_string_of_term t, hash_string_of_term t2) i) tms;
+  cache;;
+
+let cache4_list =
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i t ->
+    let t2 = tms.(if i = 0 then 9999 else i - 1) in
+    Hashtbl.add cache [hash_string_of_term t; hash_string_of_term t2] i) tms;
+  cache;;
+
+let cache4_string =
+  let cache = Hashtbl.create 10000 in
+  Array.iteri (fun i t ->
+    let t2 = tms.(if i = 0 then 9999 else i - 1) in
+    Hashtbl.add cache (hash_string_of_term t ^ ";" ^ hash_string_of_term t2) i) tms;
+  cache;;
+
+
+Random.init 0;;
+
+let f1 () =
+  Hashtbl.find cache1 tms.(Random.int 10000);;
+
+let f2 () =
+  let tm = tms.(Random.int 10000) in
+  Hashtbl.find cache2 (string_of_term tm);;
+
+let f3 () =
+  Term_hashtbl.find cache3 tms.(Random.int 10000);;
+
+let f4 () =
+  let tm = tms.(Random.int 10000) in
+  Hashtbl.find cache4 (hash_string_of_term tm);;
+
+let f4_key () =
+  let tm = tms.(Random.int 10000) in
+  Hashtbl.find cache4_key (key_of_term tm);;
+
+let f4_tuple () =
+  let i = Random.int 9999 + 1 in
+  let tm = tms.(i) in
+  let tm2 = tms.(i - 1) in
+  Hashtbl.find cache4_tuple (hash_string_of_term tm, hash_string_of_term tm2);;
+
+let f4_list () =
+  let i = Random.int 9999 + 1 in
+  let tm = tms.(i) in
+  let tm2 = tms.(i - 1) in
+  Hashtbl.find cache4_list [hash_string_of_term tm; hash_string_of_term tm2];;
+
+let f4_string () =
+  let i = Random.int 9999 + 1 in
+  let tm = tms.(i) in
+  let tm2 = tms.(i - 1) in
+  Hashtbl.find cache4_string (hash_string_of_term tm ^ ";" ^ hash_string_of_term tm2);;
+
+
+(* 1.148s *)
+test 10000 f1 ();;
+(* 0.112s *)
+test 10000 f2 ();;
+(* 4.861s with hash t = Hashtbl.hash t *)
+(* 0.128s with hash t = Hashtbl.hash (string_of_term t) *)
+(* 0.045s with hash t = Hashtbl.hash (hash_string_of_term t) *)
+(* 4.853s with hash t = hash_of_term t *)
+(* 0.061s with hash t = Hashtbl.hash (hash_string_of_term3 20 t) *)
+test 10000 f3 ();;
+
+(* 0.024s *)
+test 10000 f4 ();;
+
+(* 0.095s *)
+test 10000 f4_key ();;
+
+(* 0.348s *)
+test 100000 f4_tuple ();;
+(* 0.352s *)
+test 100000 f4_list ();;
+(* 0.356s *)
+test 100000 f4_string ();;
+
+reset_all_counters();;
+get_all_counters();;
+
+standardize_list();;

@@ -1,4 +1,4 @@
-needs "compiled_eval.hl";;
+needs "eval_compile.hl";;
 
 let true_tm = standardize_tm `T`;;
 let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
