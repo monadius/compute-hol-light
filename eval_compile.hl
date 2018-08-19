@@ -2,7 +2,6 @@ needs "eval_database.hl";;
 needs "eval_expr.hl";;
 
 let generate_eval_errors = ref true;;
-let generate_call_counters = ref false;;
 
 let rec split_while p = function
   | [] -> [], []
@@ -446,11 +445,6 @@ let compile_function func =
 
 
 let compile_rules db rules =
-  let add_global_extra f =
-    let add cond extra v = if cond then add_extra extra v else extra in
-    let extra = add !generate_call_counters f.extra Extra_counter in
-    { f with extra = extra } 
-  in
   let get_extra_exprs fs =
     let get_extra f es extra =
       match extra with
@@ -624,7 +618,6 @@ let compile_rules db rules =
     filter (fun f -> f.poly_indices <> []) (abs_fs @ fs)
     |> map get_arg_types_expr in
   let f_names = map (fun f -> f.name) fs in
-  let fs = List.map add_global_extra fs in
   let extra_exprs = get_extra_exprs fs in
   let f_exprs = map compile_function (abs_fs @ fs) in
   let result_expr = mk_tuple (map mk_raw f_names) in
