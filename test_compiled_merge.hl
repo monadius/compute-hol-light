@@ -1,4 +1,4 @@
-needs "compiled_eval.hl";;
+needs "eval_compile.hl";;
 
 let le_nat_def = define
   `le_nat 0 n = T
@@ -59,11 +59,6 @@ write_rules_names db "out2.hl" [
 let true_tm = standardize_tm `T`;;
 let COND_T = prove(`(if T then (t:A) else e) = t`, REWRITE_TAC[COND_CLAUSES]);;
 let COND_F = prove(`(if F then (t:A) else e) = e`, REWRITE_TAC[COND_CLAUSES]);;
-
-let COND_num_list_T = (standardize o INST_TYPE[`:(num)list`, aty]) COND_T and
-    COND_num_list_F = (standardize o INST_TYPE[`:(num)list`, aty]) COND_F and
-    COND_arbin_T = (standardize o INST_TYPE[`:arbin`, aty]) COND_T and
-    COND_arbin_F = (standardize o INST_TYPE[`:arbin`, aty]) COND_F;;
 
 needs "out2.hl";;
 needs "test_merge_sort.hl";;
