@@ -32,7 +32,14 @@ type db_rec = {
   mutable rewrites: rewrite_rec list;
 };;
 
-type database = Database of (string, (term * db_rec) list) Hashtbl.t;;
+type database_options = {
+  database_name: string;
+  mutable extra_rewrites: (string * thm) list;
+  mutable extra_rules: (string * (thm -> thm)) list;
+};;
+
+type database = 
+  Database of (string, (term * db_rec) list) Hashtbl.t * database_options;;
 
 let get_type =
   let rec get ty =
@@ -138,14 +145,32 @@ let () =
 
 (* Database functions *)
 
-let empty_db () = Database (Hashtbl.create 100);;
+let empty_db name =
+  let options = {
+    database_name = name;
+    extra_rewrites = [];
+    extra_rules = [];
+  } in
+  Database (Hashtbl.create 100, options);;
 
-let entries (Database db) = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+let database_options (Database (_, opts)) = opts;;
 
-let has_entries (Database db) name =
+let add_extra_rule (Database (_, opts)) (rule_string, rule) =
+  if can (assoc rule_string) opts.extra_rules then ()
+  else
+    opts.extra_rules <- opts.extra_rules @ [rule_string, rule];;
+
+let add_extra_rewrite (Database (_, opts)) (rw_string, rw) =
+  if can (assoc rw_string) opts.extra_rewrites then ()
+  else
+    opts.extra_rewrites <- opts.extra_rewrites @ [rw_string, rw];;
+
+let entries (Database (db, _)) = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+
+let has_entries (Database (db, _)) name =
   Hashtbl.mem db name;;
 
-let add_entry (Database db) const entry =
+let add_entry (Database (db, _)) const entry =
   let name, _ = dest_const const in
   let entries = try Hashtbl.find db name with Not_found -> [] in
   Hashtbl.replace db name ((const, entry) :: entries);;
@@ -159,7 +184,7 @@ let same_extra e1 e2 =
 let add_extra ls e =
   e :: filter (fun e' -> not (same_extra e e')) ls;;
 
-let find_entries (Database db) const =
+let find_entries (Database (db, _)) const =
   let name, ty = dest_const const in
   let entries = Hashtbl.find db name in
   filter (fun (c, db_rec) -> can (type_match (type_of c) ty) []) entries
@@ -192,7 +217,7 @@ let find_exact_entry db const =
     failwith (Format.sprintf "find_exact_entry: no entries for `%s`"
                 (string_of_term_type const));;
 
-let get_entries (Database db) names =
+let get_entries (Database (db, _)) names =
   map (Hashtbl.find db) names |> flat |> map snd;;
 
 let set_extra_for_consts db extra consts =
@@ -278,8 +303,11 @@ let add_thm db ?type_tm (thm_name, index, eq_th) =
   } :: entry.rewrites;;
 
 let add_thms db ths =
+  let opts = database_options db in
+  let extra_rw = PURE_REWRITE_RULE (map snd opts.extra_rewrites) in
+  let extra_rules = rev_itlist (o) (map snd opts.extra_rules) I in
   let add (name, th, type_tms) =
-    let eqs = split_thm th in
+    let eqs = split_thm th |> map extra_rw |> map extra_rules in
     let add_all type_tm = 
       List.iteri (fun i th -> add_thm db ?type_tm (name, i + 1, th)) eqs in
     match type_tms with
