@@ -19,7 +19,7 @@ type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
 type app_type = 
     Basic_app of term 
   | Const_app of db_rec 
-  | Var_app of string
+  | Var_app of term
   | Abs_app of term * eval_tree
 
 and func_app_rec = {
@@ -54,7 +54,7 @@ let build_eval_tree db =
       | _ when is_gabs head -> 
         let _, body = strip_gabs head in
         Abs_app (head, build body)
-      | Var (name, _) -> Var_app name
+      | Var _ -> Var_app head
       | Const (name, _) -> begin
           if has_entries db name then
             Const_app (find_most_specific_entry db head)
@@ -149,7 +149,10 @@ let enum_names s n =
 
 type compile_env = {
   cond_names: (hol_type * string) list;
+  (* name + global flag (for variables) *)
+  tm_names: (term * (string * bool)) list;
 };;
+
 
 let compile_eval_tree env =
   let mk_refl expr = App (Raw "REFL", expr) in
@@ -176,16 +179,36 @@ let compile_eval_tree env =
   in
   let get_fixed_args tms =
     List.map (fun tm ->
-      let name, ty = dest_var tm in
+      let name, _ = 
+        try assoc tm env.tm_names
+        with Failure _ -> 
+          failwith ("Undefined name for: " ^ string_of_term tm) in
+      let ty = type_of tm in
       if is_fun_ty ty then 
         mk_tuple [mk_raw name; mk_raw ("func_" ^ name)]
       else 
         mk_raw name) tms 
   in
   let compile_cond name cond_ty cond_expr then_expr else_expr =
+    let t_var_name, e_var_name, var_exprs =
+      let create_var base_name ty_expr =
+        let tm = mk_var (base_name, cond_ty) in
+        let name, global = assocd tm env.tm_names (base_name, false) in
+        let vname = "var_" ^ name in
+        if global then 
+          false, vname, Raw vname
+        else
+          true, vname, mk_let (vname, App (Raw "mk_var", mk_tuple [String name; ty_expr])) in
+      let ty_expr = Raw "ty" in
+      let flag1, t_var, t_var_expr = create_var "t" ty_expr in
+      let flag2, e_var, e_var_expr = create_var "e" ty_expr in
+      let exprs = (if flag1 then [t_var_expr] else [])
+                  @ (if flag2 then [e_var_expr] else []) in
+      t_var, e_var, exprs in
     let inst_true, inst_false =
       let th_name = assocd cond_ty env.cond_names "COND" in
-      let inst_vars = App (Raw "INST", Raw "[then_tm, then_var; else_tm, else_var]") in
+      let inst_list = Format.sprintf "[then_tm, %s; else_tm, %s]" t_var_name e_var_name in
+      let inst_vars = App (Raw "INST", Raw inst_list) in
       let inst_expr th =
         if th_name <> "COND" then 
           App (inst_vars, Raw th)
@@ -193,8 +216,6 @@ let compile_eval_tree env =
           App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; Raw th])) in
       inst_expr (th_name ^ "_T"), inst_expr (th_name ^ "_F") in
     let type_expr = mk_let ("ty", App (Raw "type_of", Raw "then_tm")) in
-    let t_var = mk_let ("then_var", App (Raw "mk_var", mk_tuple [String "t"; Raw "ty"])) in
-    let e_var = mk_let ("else_var", App (Raw "mk_var", mk_tuple [String "e"; Raw "ty"])) in
     let cond_eq = mk_let ("cond_eq", cond_expr) in
     let cond_th =
       mk_let ("th0", mk_comb "op" ["cond_eq", Arg_theorem; "then_tm", Arg_term; "else_tm", Arg_term]) in
@@ -210,8 +231,9 @@ let compile_eval_tree env =
     ] in
     let cond_test = Raw "rand (concl cond_eq) = true_tm" in
     let if_expr = If (cond_test, then_branch, else_branch) in
-    chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"] @ 
-      [type_expr; t_var; e_var; cond_eq; cond_th; if_expr])
+    chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"]
+      @ (if var_exprs = [] then [] else type_expr :: var_exprs)
+      @ [cond_eq; cond_th; if_expr])
   in
   let compile_and name expr1 expr2 =
     let a1_eq = mk_let ("a1_eq", expr1) in
@@ -263,7 +285,7 @@ let compile_eval_tree env =
         let f_name = 
           match app.app_type with 
           | Const_app f -> f.f_name 
-          | Var_app f -> "func_" ^ f 
+          | Var_app tm -> "func_" ^ fst (assoc tm env.tm_names)
           | _ -> failwith "impossible" in
         let app_expr = mk_app (Raw f_name, fixed_args @ args') in
         if forall (fun (_, ty) -> ty = Arg_term || ty = Arg_function) full_arg_list then app_expr
@@ -291,7 +313,7 @@ let compile_eval_tree env =
     | Func_app ({applied_args = []} as app) when not (is_basic_app t) ->
       let f_name = 
         (match app.app_type with
-        | Var_app name -> "func_" ^ name
+        | Var_app tm -> "func_" ^ fst (assoc tm env.tm_names)
         | Const_app rw -> rw.f_name
         | _ -> failwith "Partial_app (Basic_app, Abs_app) is not allowed") in
       let f_expr = mk_app (Raw f_name, get_fixed_args app.fixed_args) in
@@ -306,7 +328,8 @@ let compile_eval_tree env =
   compile;;
 
 type case_info = {
-  vars: (term * string) list;
+  (* vars: (term * string) list; *)
+  vars: term list;
   rhs: eval_tree;
   args: (pattern * arg_type) list;
   th_name: string;
@@ -326,19 +349,22 @@ type func_info = {
 
 let compile_rhs env ty_inst case =
   let var_exprs =
-    case.vars 
-    |> filter (fun (v, _) -> tyvars (type_of v) <> [])
-    |> map (fun (v, var_name) ->
-        let name, _ = dest_var v in
-        let args = mk_tuple [String name; App (Raw "type_of", Raw name)] in
-        mk_let (var_name, App (Raw "mk_var", args))) in
+    case.vars
+    |> map (fun tm -> tm, assoc tm env.tm_names) 
+    |> filter (fun (_, (_, global)) -> not global)
+    |> map (fun (tm, (var_name, _)) ->
+        let name, _ = dest_var tm in
+        let args = mk_tuple [String name; App (Raw "type_of", Raw var_name)] in
+        mk_let ("var_" ^ var_name, App (Raw "mk_var", args))) in
   let type_inst =
     match ty_inst with
     | None -> Raw case.th_name
     | Some expr ->
       mk_app (Raw "INST_TYPE", [expr; Raw case.th_name]) in
   let inst =
-    List.map (fun tm, var_name -> fst (dest_var tm), var_name) case.vars in
+    List.map (fun tm ->
+      let name, _ = assoc tm env.tm_names in
+      name, "var_" ^ name) case.vars in
   let inst_expr =
     if inst = [] then type_inst
     else
@@ -357,7 +383,7 @@ let compile_rhs env ty_inst case =
     ]);;
 
 let compile_function env func =
-  let var_name vars i = fst (dest_var (fst (List.nth vars i))) in
+  let var_name vars i = fst (assoc (List.nth vars i) env.tm_names) in
   let compile_case ty_inst case =
     let vars = case.vars in
     let rec compile_pat = function
@@ -556,27 +582,34 @@ let compile_rules db rules =
       |> List.concat
   in
   let create_compile_env fs =
+    let cases = List.map (fun f -> f.cases) fs |> List.concat in
+    let vars = List.fold_left (fun r c -> union r c.vars) [] cases in
     let cond_tys = 
       List.map (fun f -> f.cases) fs 
         |> List.concat
         |> List.fold_left (fun r case -> union r (extract_cond_types case.rhs)) []
         |> List.filter (fun ty -> tyvars ty = []) in
-    let cond_names =
+    let cond_vars =
+      cond_tys
+        |> List.map (fun ty -> [mk_var ("t", ty); mk_var ("e", ty)])
+        |> List.concat in
+    let cond_names = 
       cond_tys
         |> List.fold_left (fun (r, names) ty ->
             let name' = "COND_" ^ fix_identifier (string_of_type ty) in
             let name = variant_name names name' in
             ((ty, name) :: r, name :: names)) ([], [])
         |> fst in
-    { cond_names = cond_names }
+    let var_names = 
+      union vars cond_vars
+        |> List.fold_left (fun (r, names) tm ->
+            let name', ty = dest_var tm in
+            let name = variant_name names (fix_identifier name') in
+            ((tm, (name, tyvars ty = [])) :: r, name :: names)) ([], [])
+        |> fst in
+    { cond_names = cond_names;
+      tm_names = var_names; }
   in
-  let name_vars vars =
-    (* TODO: consider types if names coincide *)
-    map (fun v -> v, "var_" ^ fst (dest_var v)) vars 
-  in
-  let vars' = map (fun rule -> map (fun r -> r.fv) rule.rewrites |> flat) rules 
-              |> flat |> setify in
-  let vars = name_vars vars' in
   let get_case abs rw =
     let rhs = (snd o dest_eq o concl) rw.thm in
     let th_name = Format.sprintf "%s_case%d" rw.thm_name rw.thm_index in
@@ -586,7 +619,7 @@ let compile_rules db rules =
         failwith (Format.sprintf "Case %s: %s" th_name msg) in
     let eval_tree, abs = extract_abs abs (concl rw.thm, th_name) eval_tree in
     let case = {
-      vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) rw.fv;
+      vars = rw.fv;
       rhs = eval_tree;
       args = zip rw.args rw.arg_types;
       th_name = th_name;
@@ -594,12 +627,12 @@ let compile_rules db rules =
     } in
     case, abs 
   in
-  let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
+  let get_abs_case (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let base_args, body_tm = strip_gabs abs_tm in
     let fixed_args = frees abs_tm in
     let args = fixed_args @ base_args in
     let fv, pats = check_args_form args in {
-      vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
+      vars = fv;
       rhs = abs_body;
       args = map2 (fun pat arg -> pat, get_type arg) pats args;
       th_name = abs_rw.f_name ^ "_th";
@@ -627,22 +660,14 @@ let compile_rules db rules =
     abs, f :: fs) ((0, []), []) rules 
   in
   (* Add free variables from abstractions *)
-  let vars' = vars' @ 
-    flat (map (fun tm, _ ->
-      let args, _ = strip_gabs tm in
-      flat (map frees args)) (snd abs)) |> setify in
-  let vars = name_vars vars' in
   let th_exprs =
     flat (map (fun rule -> rule.rewrites) rules)
       |> map (fun rw -> rw.thm_name)
       |> setify
       |> map get_th_expr in
-  let var_exprs = 
-    vars |> filter (fun (v, _) -> tyvars (type_of v) = [])
-         |> map get_var_expr in
   let abs_th_exprs = map get_abs_expr (snd abs) in
   let abs_fs = map (fun (abs_tm, (_, (abs_rw: db_rec), _, _)) as abs ->
-    let abs_case = get_abs_case vars abs in
+    let abs_case = get_abs_case abs in
     let name = abs_rw.f_name in {
       name = name;
       arg_types = map snd abs_case.args;
@@ -654,6 +679,10 @@ let compile_rules db rules =
     }) (snd abs) in
   let all_fs = abs_fs @ fs in
   let env = create_compile_env all_fs in
+  let var_exprs = 
+    env.tm_names
+      |> List.filter (fun (_, (_, global)) -> global)
+      |> List.map (fun (tm, (name, _)) -> get_var_expr (tm, "var_" ^ name)) in
   let cond_th_exprs = get_cond_th_exprs env.cond_names in
   let ty_exprs =
     filter (fun f -> f.poly_indices <> []) all_fs
@@ -692,10 +721,14 @@ let compile_term db f_name tm =
       |> List.map (fun (ty, name) -> [cond_expr ty name "_T"; cond_expr ty name "_F"])
       |> List.concat
   in
-  let create_compile_env eval_tree =
+  let create_compile_env eval_tree vars =
     let cond_tys = 
       extract_cond_types eval_tree
         |> List.filter (fun ty -> tyvars ty = []) in
+    let cond_vars =
+      cond_tys
+        |> List.map (fun ty -> [mk_var ("t", ty); mk_var ("e", ty)])
+        |> List.concat in
     let cond_names =
       cond_tys
         |> List.fold_left (fun (r, names) ty ->
@@ -703,7 +736,15 @@ let compile_term db f_name tm =
             let name = variant_name names name' in
             ((ty, name) :: r, name :: names)) ([], [])
         |> fst in
-    { cond_names = cond_names }
+    let var_names = 
+      union vars cond_vars
+        |> List.fold_left (fun (r, names) tm ->
+            let name', ty = dest_var tm in
+            let name = variant_name names (fix_identifier name') in
+            ((tm, (name, tyvars ty = [])) :: r, name :: names)) ([], [])
+        |> fst in
+    { cond_names = cond_names;
+      tm_names = var_names; }
   in
   let get_abs_expr (abs_tm, (_, (abs_rw: db_rec), base_tm, base_name)) =
     let args, _ = strip_gabs abs_tm in
@@ -716,12 +757,12 @@ let compile_term db f_name tm =
                     mk_list_expr (map get_tm_expr args)])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) 
   in
-  let get_abs_case vars (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
+  let get_abs_case (abs_tm, (abs_body, (abs_rw: db_rec), _, _)) =
     let base_args, body_tm = strip_gabs abs_tm in
     let fixed_args = frees abs_tm in
     let args = fixed_args @ base_args in
     let fv, pats = check_args_form args in {
-      vars = map (fun tm -> find (fun (tm2, _) -> tm = tm2) vars) fv;
+      vars = fv;
       rhs = abs_body;
       args = map2 (fun pat arg -> pat, get_type arg) pats args;
       th_name = abs_rw.f_name ^ "_th";
@@ -731,17 +772,17 @@ let compile_term db f_name tm =
     } 
   in
   let eval_tree' = build_eval_tree db tm |> optimize_eval_tree in
-  let env = create_compile_env eval_tree' in
   let eval_tree, (_, abs) = extract_abs (0, []) (tm, "tm") eval_tree' in
   let vars' = map (fun tm, _ ->
                     let args, _ = strip_gabs tm in
                     flat (map frees args)) abs 
       |> flat |> setify in
-  let vars = map (fun v -> v, fst (dest_var v) ^ "_var") vars' in
-  let var_exprs = map get_var_expr vars in
+  let env = create_compile_env eval_tree' vars' in
+  let var_exprs = 
+    map (fun (tm, (name, _)) -> get_var_expr (tm, "var_" ^ name)) env.tm_names in
   let abs_th_exprs = map get_abs_expr abs in
   let abs_exprs = map (fun (_, (_, (abs_rw: db_rec), _, _)) as abs ->
-    let abs_case = get_abs_case vars abs in
+    let abs_case = get_abs_case abs in
     let abs_f = {
       name = abs_rw.f_name;
       arg_types = map snd abs_case.args;

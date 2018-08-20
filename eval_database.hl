@@ -102,17 +102,20 @@ let variant_name existing name =
   loop 0;;
 
 let fix_identifier str =
-  Str.global_replace (Str.regexp "[^a-zA-Z0-9]") "_" str
-    |> Str.global_replace (Str.regexp "__+") "_"
-    |> Str.global_replace (Str.regexp "^_+\\|_+$") "";;
+  let str' =
+    Str.global_replace (Str.regexp "[^a-zA-Z0-9]") "_" str
+      |> Str.global_replace (Str.regexp "__+") "_"
+      |> Str.global_replace (Str.regexp "^_+\\|_+$") "" in
+  if Str.string_match (Str.regexp "[a-z]") str' 0 then str'
+  else 
+    "id_" ^ str';;
 
 let suffix_of_type const =
   let name, ty = dest_const const in
   let c0 = mk_const (name, []) in
   let inst = type_match (type_of c0) ty [] in
   let tys = map fst inst |> filter (not o is_vartype) in
-  let str = String.concat "_" (map string_of_type tys) in
-  fix_identifier str;;
+  String.concat "_" (map string_of_type tys);;
 
 (* Standard names for common symbols *)
 let () =
@@ -214,6 +217,7 @@ let set_rule db ?name const =
     | None -> ["f"; fix_name c_name; suffix_of_type const]
                 |> List.filter (fun s -> s <> "")
                 |> String.concat "_"
+                |> fix_identifier
     | Some name -> name in
   let nargs =
     match get_type const with
@@ -250,6 +254,7 @@ let add_thm db ?type_tm (thm_name, index, eq_th) =
         f_name = ["f"; fix_name name; suffix_of_type key_const]
                   |> List.filter (fun s -> s <> "")
                   |> String.concat "_"
+                  |> fix_identifier
                   |> variant_name names;
         const = key_const;
         type_inst_const = if key_const = const then None else Some key_const;
