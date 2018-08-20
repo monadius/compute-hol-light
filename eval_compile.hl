@@ -810,7 +810,7 @@ let print_rules db fmt ?term rules =
   Format.fprintf fmt "@[<v>%a;;@]@."
     (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
 
-let head_expr db =
+let head_split_expr db =
   let opts = database_options db in
   let rewrites =
     let rw_list = mk_list_expr (map (fun (s, _) -> Raw s) opts.extra_rewrites) in
@@ -824,12 +824,27 @@ let head_expr db =
       Raw "split_thm th |> map extra_rw |> map extra_rules"
     ], None);;
 
+let print_global_defs fmt () =
+  Format.pp_print_string fmt
+"let true_tm = standardize_tm `T`;;
+let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]) and
+    COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
+
+let p_var_bool = standardize_tm `P: bool`;;
+let T_AND = (standardize o TAUT) `T /\ P <=> P` and
+    F_AND = (standardize o TAUT) `F /\ P <=> F` and
+    T_OR = (standardize o TAUT) `T \/ P <=> T` and
+    F_OR = (standardize o TAUT) `F \/ P <=> P`;;
+";;
+
 let write_rules db ?(margin = 200) ?term fname rules =
   let oc = open_out fname in
   try
     let fmt = Format.formatter_of_out_channel oc in
     Format.pp_set_margin fmt margin;
-    Format.fprintf fmt "%a;;@\n@." print_expr (head_expr db);
+    print_global_defs fmt ();
+    Format.pp_print_newline fmt ();
+    Format.fprintf fmt "%a;;@\n@." print_expr (head_split_expr db);
     print_rules db fmt ?term rules;
     Format.pp_print_flush fmt ();
     close_out oc
