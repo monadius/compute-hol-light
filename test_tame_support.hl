@@ -17,23 +17,22 @@ let f_EQ_num tm1 tm2 = fst (Nat_arith.neq tm1 tm2);;
 
 let numeral = Nat_arith.replace_numerals;;
 
+needs "eval_compile.hl";;
+
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;
 
-needs "eval_compile.hl";;
-
-let () =
-  add_extra_split_rule Nat_arith.REPLACE_NUMERALS;;
-
 let tame_default_db () =
-  let db = empty_db() in
+  let db = empty_db "tame" in
   List.iter (fun c -> set_rule db c) [
     `(=):num->num->bool`; `(=):(num)list->(num)list->bool`; `(=):face->face->bool`;
     `(=):num#num#num->num#num#num->bool`;
     `(=):bool->bool->bool`;
     `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
-    `~`; (*`/\`; `\/`*)
+    `~`;
   ];
+  add_extra_rule db ("Nat_arith.REPLACE_NUMERALS", Nat_arith.REPLACE_NUMERALS);
+  List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
   db;;
 
 let f_NOT =
@@ -321,18 +320,12 @@ module Type_cmp = struct
   let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
 end;;
 
-module Term_cmp = struct
-  type t = term
-  let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
-end;;
-
 module Term_list_cmp = struct
   type t = term list
   let compare (ts1:t) (ts2:t) = Pervasives.compare ts1 ts2
 end;;
 
 module Type_set = Set.Make(Type_cmp);;
-module Term_set = Set.Make(Term_cmp);;
 module Term_list_set = Set.Make(Term_list_cmp);;
 
 let setify_types tys =

@@ -23,7 +23,7 @@ let the_DEF = define
  `the (SOME x2) = x2`;;
 
 let is_none_DEF = define
-  `is_none x = match x with NONE -> T | SOME unused -> F`;;
+  `is_none x = match x with NONE -> T | SOME _ -> F`;;
 
 let funpow_DEF = define
  `funpow n f =
@@ -315,11 +315,11 @@ let between_DEF = define
   in
     (if member post_1 ram_2
       then let
-             (pre_2, unused) = splitAt ram_2 post_1
+             (pre_2, _) = splitAt ram_2 post_1
            in
              pre_2
       else let
-             (pre_2, unused) = splitAt ram_2 pre_1
+             (pre_2, _) = splitAt ram_2 pre_1
            in
              APPEND post_1 pre_2)`;;
 
@@ -906,7 +906,7 @@ let subdivFacea_ALT = (PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] o prove)
         if nextVertex f u = v /\ n = 0 then subdivFacea g f v 0 vos
         else
           let ws = upt (countVertices g) (countVertices g + n) in
-          let (unused, (f_2, ga)) = splitFace g u v f ws in
+          let (_, (f_2, ga)) = splitFace g u v f ws in
             subdivFacea ga f_2 v 0 vos`,
   REPEAT CONJ_TAC THEN GEN_REWRITE_TAC LAND_CONV [subdivFacea_DEF] THEN REWRITE_TAC[]);;
 
@@ -1079,7 +1079,7 @@ let excessNotAtRec_DEF =
   SPEC_ALL def;;
 
 let excessNotAtRec_ALT = prove
-  (`excessNotAtRec [] unused = 0
+  (`excessNotAtRec [] g = 0
     /\ excessNotAtRec ((x, y) :: ps) g =
         MAX (excessNotAtRec ps g) (y + excessNotAtRec (deleteAround g x ps) g)`,
   CONJ_TAC THEN GEN_REWRITE_TAC (LAND_CONV o RATOR_CONV) [excessNotAtRec_DEF] THEN REWRITE_TAC[]);;
@@ -1234,7 +1234,7 @@ let merge_DEF = define
 let merge_ALT = prove
   (`merge [] (i:(A#B)list) = i
     /\ merge ((x, y) :: xys) i = 
-        if pred_list (\(xa, unused). ~(x = xa)) i then
+        if pred_list (\(xa, _). ~(x = xa)) i then
           (x, y) :: merge xys i
         else
           merge xys i`,
