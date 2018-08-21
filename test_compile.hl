@@ -12,7 +12,7 @@ let T_AND = TAUT `T /\ P <=> P` and
 
 (* Test db 1 *)
 
-let db = add_thms (empty_db()) [
+let db = add_thms (empty_db "test1") [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_GE", ARITH_GE, [];
   "ARITH_GT", ARITH_GT, [];
@@ -34,10 +34,19 @@ let db = add_thms (empty_db()) [
   "lambda5", lambda5; *)
 ];;
 
+dependencies db `FILTER (\x. ALL (\x. x > 2) [x]) [1;2;3]`;;
+
 List.iter (set_rule db) [`(=):A->A->bool`; `>`; `>=`];;
 
 write_rules_names db "out2.hl" [
   "FILTER";
+]
+~term:`FILTER (\x. if x > 2 then T else F) [1;2;3;4325;452;345]`;;
+
+add_extra_rewrite db ("GSYM GT", GSYM GT);;
+write_rules_consts db "out2.hl" [
+  [`>`; `>=`];
+  [`FILTER:(num->bool)->(num)list->(num)list`];
 ]
 ~term:`FILTER (\x. if x > 2 then T else F) [1;2;3;4325;452;345]`;;
 

@@ -200,7 +200,7 @@ let f_OR =
   f_OR;;
 
 let default_db () =
-  let db = empty_db() in
+  let db = empty_db "default" in
   List.iter (fun c -> set_rule db c) [
     `(=):A->A->bool`;
     `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
