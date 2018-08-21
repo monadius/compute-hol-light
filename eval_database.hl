@@ -221,13 +221,17 @@ let get_entries (Database (db, _)) names =
   map (Hashtbl.find db) names |> flat |> map snd;;
 
 let set_extra_for_consts db extra consts =
-  List.map (find_entries db) consts
-    |> List.concat
-    |> List.iter (fun e -> e.extra <- add_extra e.extra extra);;
+  List.map (find_exact_entry db) consts
+    |> List.iter (fun (e: db_rec) -> e.extra <- add_extra e.extra extra);;
 
 let set_extra_for_names db extra names =
   get_entries db names
     |> List.iter (fun (e: db_rec) -> e.extra <- add_extra e.extra extra);;
+
+let set_extra_for_all db extra =
+  entries db
+    |> List.iter (fun (_, es) ->
+         List.iter (fun (_, (e: db_rec)) -> e.extra <- add_extra e.extra extra) es);;
   
 let set_rule db ?name const =
   if can (find_exact_entry db) const then 
@@ -322,7 +326,8 @@ let spec_rule db rule type_tm =
     set_rule db type_tm
   else
     List.iter (fun rw ->
-      add_thm db ~type_tm (rw.thm_name, rw.thm_index, rw.thm)) rule.rewrites;;
+      add_thm db ~type_tm (rw.thm_name, rw.thm_index, rw.thm)) 
+    (List.rev rule.rewrites);;
 
 module Term_set = Set.Make(
   struct 
@@ -330,7 +335,42 @@ module Term_set = Set.Make(
     let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
   end);;
 
-let dependencies db ?(inst_types = true) tm =
+(* Kosaraju's algorithm *)
+let resolve_deps deps =
+  let find table v d = 
+    try Hashtbl.find table v with Not_found -> d in
+  let in_edges = Hashtbl.create 100 in
+  let visited = ref [] in
+  let assigned = ref [] in
+  let list = ref [] in
+  let rec visit from v =
+    if from <> v then begin
+      let es = find in_edges v [] in
+      Hashtbl.replace in_edges v (insert from es)
+    end;
+    if not (mem v !visited) then begin
+      visited := v :: !visited;
+      List.iter (visit v) (find deps v []);
+      list := v :: !list
+    end in
+  let rec assign v =
+    if mem v !assigned then []
+    else begin
+      assigned := v :: !assigned;
+      let ins = find in_edges v [] in
+      itlist (fun w c -> assign w @ c) ins [v]
+    end in
+  let vs = Hashtbl.fold (fun v es r -> union (v :: es) r) deps [] in
+  List.iter (W visit) vs;
+  rev_itlist (fun v r ->
+    match assign v with
+    | [] -> r
+    | comp -> comp :: r) !list [];;
+
+(* FIXME: inst_type = false does not work properly *)
+(* FIXME: if the initial term contains constants without rewrites 
+          they will be added to dependencies *)
+let dependencies db ?(inst_types = true) tm : term list list =
   let deps = Hashtbl.create 100 in
   let rec consts tm =
     match tm with
@@ -361,10 +401,15 @@ let dependencies db ?(inst_types = true) tm =
       | Some entry ->
         let next_all =
           List.map (fun rw -> rw.thm |> concl |> rand |> consts) entry.rewrites
-            |> List.fold_left Term_set.union Term_set.empty in
-        Hashtbl.add deps const (Term_set.elements next_all);
+            |> List.fold_left Term_set.union Term_set.empty
+            |> Term_set.filter (fun c ->
+                try
+                  let e = find_most_specific_entry db c in
+                  e.rewrites <> []
+                with Failure _ -> false) in
+        Hashtbl.add deps entry.const (Term_set.elements next_all);
         let next = Term_set.filter (fun c -> not (Term_set.mem c closed')) next_all in
         process closed' (Term_set.union open' next)
   in
   process Term_set.empty (consts tm);
-  Hashtbl.fold (fun k v r -> (k, v) :: r) deps [];;
+  resolve_deps deps;;
