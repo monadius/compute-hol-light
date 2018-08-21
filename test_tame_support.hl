@@ -35,6 +35,13 @@ let tame_default_db () =
   List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
   db;;
 
+let true_tm = standardize_tm `T`;;
+let p_var_bool = `P: bool`;;
+let T_AND = TAUT `T /\ P <=> P` and
+    F_AND = TAUT `F /\ P <=> F` and
+    T_OR = TAUT `T \/ P <=> T` and
+    F_OR = TAUT `F \/ P <=> P`;;
+
 let f_NOT =
   let NOT_CLAUSES_case1, NOT_CLAUSES_case2, NOT_CLAUSES_case3 =
     match split_thm NOT_CLAUSES with
@@ -298,7 +305,7 @@ let f_EQ =
         INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case4
       | Const ("Final", _), Const ("Nonfinal", _) -> facetype_case1
       | Const ("Nonfinal", _), Const ("Final", _) -> facetype_case2
-      | _ -> failwith "No match: f_EQ"
+      | _ -> f_EQ_num tm1 tm2
     with
     | Failure msg -> eval_error msg "f_EQ" [tm1; tm2]
     | Eval_error err -> eval_error_propagate err "f_EQ" [tm1; tm2]
