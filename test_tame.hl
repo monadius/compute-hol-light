@@ -160,7 +160,6 @@ let rules = [
 
 let db = add_thms (tame_default_db ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
-(* TODO: doesn't work: extra dependencies for fixed constants are produced *)
 (* let consts = dependencies db `tameEnumFilterBounded` ~inst_types:false *)
 set_extra_for_consts db Extra_memo [
   (* `bool_to_num`; *)

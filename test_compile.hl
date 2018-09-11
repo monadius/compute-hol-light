@@ -10,6 +10,22 @@ let T_AND = TAUT `T /\ P <=> P` and
     T_OR = TAUT `T \/ P <=> T` and
     F_OR = TAUT `F \/ P <=> P`;;
 
+(* Test db 0 *)
+
+let db = add_thms (empty_db "test0") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_GE", ARITH_GE, [];
+  "ARITH_GT", ARITH_GT, [];
+  "FILTER", FILTER, [];
+];;
+
+let tm = `FILTER (\x. x > 2) [1;2;3;4]`;;
+let consts = dependencies db tm ~inst_types:false;;
+map (map (fun c -> c, type_of c)) consts;;
+write_rules_consts db "out2.hl" consts ~term:tm;;
+
+loadt "out2.hl";;
+
 (* Test db 1 *)
 
 let db = add_thms (empty_db "test1") [

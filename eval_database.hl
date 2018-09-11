@@ -367,10 +367,9 @@ let resolve_deps deps =
     | [] -> r
     | comp -> comp :: r) !list [];;
 
-(* FIXME: inst_type = false does not work properly *)
 (* FIXME: if the initial term contains constants without rewrites 
           they will be added to dependencies *)
-let dependencies db ?(inst_types = true) tm : term list list =
+let dependencies db ?(inst_types = true) tm (*: term list list*) =
   let deps = Hashtbl.create 100 in
   let rec consts tm =
     match tm with
@@ -397,8 +396,7 @@ let dependencies db ?(inst_types = true) tm : term list list =
       let open' = Term_set.remove const open_set in
       let closed' = Term_set.add const closed_set in
       match find_entry const with
-      | None -> process closed' open'
-      | Some entry ->
+      | Some entry when not (Hashtbl.mem deps entry.const) ->
         let next_all =
           List.map (fun rw -> rw.thm |> concl |> rand |> consts) entry.rewrites
             |> List.fold_left Term_set.union Term_set.empty
@@ -410,6 +408,10 @@ let dependencies db ?(inst_types = true) tm : term list list =
         Hashtbl.add deps entry.const (Term_set.elements next_all);
         let next = Term_set.filter (fun c -> not (Term_set.mem c closed')) next_all in
         process closed' (Term_set.union open' next)
+      | _ -> process closed' open'
   in
   process Term_set.empty (consts tm);
+  Hashtbl.filter_map_inplace (fun _ cs ->
+    Some (List.map (fun c -> (find_most_specific_entry db c).const) cs))
+    deps;
   resolve_deps deps;;

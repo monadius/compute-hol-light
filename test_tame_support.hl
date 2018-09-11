@@ -28,6 +28,7 @@ let tame_default_db () =
     `(=):num->num->bool`; `(=):(num)list->(num)list->bool`; `(=):face->face->bool`;
     `(=):num#num#num->num#num#num->bool`;
     `(=):bool->bool->bool`;
+    `(=):A->A->bool`;
     `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
     `~`;
   ];
