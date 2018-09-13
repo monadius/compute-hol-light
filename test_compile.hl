@@ -17,9 +17,12 @@ let db = add_thms (empty_db "test0") [
   "ARITH_GE", ARITH_GE, [];
   "ARITH_GT", ARITH_GT, [];
   "FILTER", FILTER, [];
+  "EQ_REFL", EQT_INTRO (SPEC_ALL EQ_REFL), [];
 ];;
 
-let tm = `FILTER (\x. x > 2) [1;2;3;4]`;;
+(* set_rule db `(=):num->num->bool`;; *)
+
+let tm = `FILTER (\x. x = 2) [1;2;3;4]`;;
 let consts = dependencies db tm ~inst_types:false;;
 map (map (fun c -> c, type_of c)) consts;;
 write_rules_consts db "out2.hl" consts ~term:tm;;
