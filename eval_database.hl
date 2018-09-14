@@ -14,13 +14,18 @@ type pattern =
 
 type extra = Extra_counter | Extra_memo | Extra_arg_list;;
 
+type thm_info = {
+  thm_name: string;
+  theorem: thm;
+};;
+
 type rewrite_rec = {
   args: pattern list;
   arg_types: arg_type list;
   fv: term list;
-  thm_name: string;
+  thm_ref: thm_info ref;
   thm_index: int;
-  thm: thm;
+  eq_thm: thm;
 };;
 
 type db_rec = {
@@ -32,14 +37,13 @@ type db_rec = {
   mutable rewrites: rewrite_rec list;
 };;
 
-type database_options = {
+type database = {
   database_name: string;
+  rules: (string, (term * db_rec) list) Hashtbl.t;
+  mutable theorems: (thm_info ref) list;
   mutable extra_rewrites: (string * thm) list;
   mutable extra_rules: (string * (thm -> thm)) list;
 };;
-
-type database = 
-  Database of (string, (term * db_rec) list) Hashtbl.t * database_options;;
 
 let get_type =
   let rec get ty =
@@ -141,39 +145,38 @@ let () =
     "<=", "LE";
     ">=", "GE";
     "=", "EQ";
+    "$", "tmp";
 ];;
 
 (* Database functions *)
 
-let empty_db name =
-  let options = {
-    database_name = name;
-    extra_rewrites = [];
-    extra_rules = [];
-  } in
-  Database (Hashtbl.create 100, options);;
+let empty_db name = {
+  database_name = name;
+  rules = Hashtbl.create 100;
+  theorems = [];
+  extra_rewrites = [];
+  extra_rules = [];
+};;
 
-let database_options (Database (_, opts)) = opts;;
-
-let add_extra_rule (Database (_, opts)) (rule_string, rule) =
-  if can (assoc rule_string) opts.extra_rules then ()
+let add_extra_rule db (rule_string, rule) =
+  if can (assoc rule_string) db.extra_rules then ()
   else
-    opts.extra_rules <- opts.extra_rules @ [rule_string, rule];;
+    db.extra_rules <- db.extra_rules @ [rule_string, rule];;
 
-let add_extra_rewrite (Database (_, opts)) (rw_string, rw) =
-  if can (assoc rw_string) opts.extra_rewrites then ()
+let add_extra_rewrite db (rw_string, rw) =
+  if can (assoc rw_string) db.extra_rewrites then ()
   else
-    opts.extra_rewrites <- opts.extra_rewrites @ [rw_string, rw];;
+    db.extra_rewrites <- db.extra_rewrites @ [rw_string, rw];;
 
-let entries (Database (db, _)) = Hashtbl.fold (fun name e r -> (name, e) :: r) db [];;
+let entries db = Hashtbl.fold (fun name e r -> (name, e) :: r) db.rules [];;
 
-let has_entries (Database (db, _)) name =
-  Hashtbl.mem db name;;
+let has_entries db name =
+  Hashtbl.mem db.rules name;;
 
-let add_entry (Database (db, _)) const entry =
+let add_entry db const entry =
   let name, _ = dest_const const in
-  let entries = try Hashtbl.find db name with Not_found -> [] in
-  Hashtbl.replace db name ((const, entry) :: entries);;
+  let entries = try Hashtbl.find db.rules name with Not_found -> [] in
+  Hashtbl.replace db.rules name ((const, entry) :: entries);;
 
 let same_extra e1 e2 =
   match e1, e2 with
@@ -184,9 +187,9 @@ let same_extra e1 e2 =
 let add_extra ls e =
   e :: filter (fun e' -> not (same_extra e e')) ls;;
 
-let find_entries (Database (db, _)) const =
+let find_entries db const =
   let name, ty = dest_const const in
-  let entries = Hashtbl.find db name in
+  let entries = Hashtbl.find db.rules name in
   filter (fun (c, db_rec) -> can (type_match (type_of c) ty) []) entries
     |> map snd;;
 
@@ -217,8 +220,8 @@ let find_exact_entry db const =
     failwith (Format.sprintf "find_exact_entry: no entries for `%s`"
                 (string_of_term_type const));;
 
-let get_entries (Database (db, _)) names =
-  map (Hashtbl.find db) names |> flat |> map snd;;
+let get_entries db names =
+  map (Hashtbl.find db.rules) names |> flat |> map snd;;
 
 let set_extra_for_consts db extra consts =
   List.map (find_exact_entry db) consts
@@ -262,22 +265,23 @@ let set_rule db ?name const =
   } in
   add_entry db const entry;;
 
-let add_thm db ?type_tm (thm_name, index, eq_th) =
+let add_thm db ?type_tm ?f_name (thm_ref, index, eq_th) =
   let const, _ = concl eq_th |> dest_eq |> fst |> strip_comb in
-  let name, cty = dest_const const in
+  let cname, cty = dest_const const in
   let key_const, type_inst = 
     match type_tm with 
     | None -> const, []
     | Some const -> const, type_match cty (type_of const) [] in
-  if name <> fst (dest_const key_const) then failwith "add_thm: bad type_tm";
+  if cname <> fst (dest_const key_const) then failwith "add_thm: bad type_tm";
   let th1 = INST_TYPE type_inst eq_th in
   let lhs, rhs = dest_eq (concl th1) in
   let fv, _, arg_pats = check_arg_form lhs in
   let entry =
     try find_exact_entry db key_const
     with Failure _ ->
+      let name = match f_name with Some s -> s | _ -> cname in
       let names = 
-        try get_entries db [name] |> List.map (fun e -> e.f_name)
+        try get_entries db [cname] |> List.map (fun e -> e.f_name)
         with Not_found -> [] in
       let e = {
         f_name = ["f"; fix_name name; suffix_of_type key_const]
@@ -294,26 +298,30 @@ let add_thm db ?type_tm (thm_name, index, eq_th) =
       add_entry db key_const e; e in
   if entry.nargs <> List.length arg_pats then
     failwith (Format.sprintf "Incorrect number of arguments for '%s' in '%s'" 
-                             name (string_of_thm eq_th));
-  let thms = List.map (fun rw -> rw.thm) entry.rewrites in
+                             cname (string_of_thm eq_th));
+  let thms = List.map (fun rw -> rw.eq_thm) entry.rewrites in
   warn (List.mem th1 thms) ("Duplicate rewriting rule for the theorem: " ^ string_of_thm th1);
   entry.rewrites <- { 
     args = arg_pats;
     arg_types = map get_type @@ snd (strip_comb lhs);
     fv = fv;
-    thm = th1;
-    thm_name = thm_name;
+    eq_thm = th1;
+    thm_ref = thm_ref;
     thm_index = index;
   } :: entry.rewrites;;
 
 let add_thms db ths =
-  let opts = database_options db in
-  let extra_rw = PURE_REWRITE_RULE (map snd opts.extra_rewrites) in
-  let extra_rules = rev_itlist (o) (map snd opts.extra_rules) I in
+  let extra_rw = PURE_REWRITE_RULE (map snd db.extra_rewrites) in
+  let extra_rules = rev_itlist (o) (map snd db.extra_rules) I in
   let add (name, th, type_tms) =
+    let thm_ref = ref {
+      thm_name = name;
+      theorem = th;
+    } in
+    db.theorems <- thm_ref :: db.theorems;
     let eqs = split_thm th |> map extra_rw |> map extra_rules in
     let add_all type_tm = 
-      List.iteri (fun i th -> add_thm db ?type_tm (name, i + 1, th)) eqs in
+      List.iteri (fun i eq -> add_thm db ?type_tm (thm_ref, i + 1, eq)) eqs in
     match type_tms with
     | [] -> add_all None
     | _ -> List.iter (fun tm -> add_all (Some tm)) type_tms
@@ -326,7 +334,7 @@ let spec_rule db rule type_tm =
     set_rule db type_tm
   else
     List.iter (fun rw ->
-      add_thm db ~type_tm (rw.thm_name, rw.thm_index, rw.thm)) 
+      add_thm db ~type_tm (rw.thm_ref, rw.thm_index, rw.eq_thm)) 
     (List.rev rule.rewrites);;
 
 module Term_set = Set.Make(
@@ -396,7 +404,7 @@ let dependencies db ?(inst_types = true) tm : term list list =
       match find_entry const with
       | Some entry when entry.rewrites <> [] && not (Hashtbl.mem deps entry.const) ->
         let next_all =
-          List.map (fun rw -> rw.thm |> concl |> rand |> consts) entry.rewrites
+          List.map (fun rw -> rw.eq_thm |> concl |> rand |> consts) entry.rewrites
             |> List.fold_left Term_set.union Term_set.empty
             |> Term_set.filter (fun c ->
                 try

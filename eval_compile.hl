@@ -503,25 +503,26 @@ let compile_rules db rules =
     let iterate es f = List.fold_left (get_extra f) es f.extra in
     List.fold_left iterate [] fs 
   in
-  let max_index name =
+  let max_index thm_ref =
     flat (map (fun rule -> rule.rewrites) rules)
-      |> List.filter (fun r -> r.thm_name = name)
+      |> List.filter (fun r -> r.thm_ref = thm_ref)
       |> List.fold_left (fun m r -> max m r.thm_index) 0 
   in
-  let rule_of_th_name th_name =
-    let test_rule r = can (find (fun rw -> rw.thm_name = th_name)) r.rewrites in
+  let rule_of_th_name thm_ref =
+    let test_rule r = can (find (fun rw -> rw.thm_ref = thm_ref)) r.rewrites in
     find test_rule rules
   in
-  let get_type_inst_const th_name =
-    try (rule_of_th_name th_name).type_inst_const
+  let get_type_inst_const thm_ref =
+    try (rule_of_th_name thm_ref).type_inst_const
     with _ -> None
   in
-  let get_th_expr name =
-    let n = max_index name in
+  let get_th_expr thm_ref =
+    let name = !thm_ref.thm_name in
+    let n = max_index thm_ref in
     let th_expr = 
       let e1 = App (Raw "local_split_thm", Raw name) in
       let e2 =
-        match get_type_inst_const name with
+        match get_type_inst_const thm_ref with
         | None -> e1
         | Some tm -> mk_app (Raw "inst_type_thms", [Term tm; e1]) in
       mk_app (Raw "map", [Raw "standardize"; e2]) in
@@ -611,13 +612,13 @@ let compile_rules db rules =
       tm_names = var_names; }
   in
   let get_case abs rw =
-    let rhs = (snd o dest_eq o concl) rw.thm in
-    let th_name = Format.sprintf "%s_case%d" rw.thm_name rw.thm_index in
+    let rhs = (snd o dest_eq o concl) rw.eq_thm in
+    let th_name = Format.sprintf "%s_case%d" !(rw.thm_ref).thm_name rw.thm_index in
     let eval_tree =
       try build_eval_tree db rhs |> optimize_eval_tree
       with Failure msg ->
         failwith (Format.sprintf "Case %s: %s" th_name msg) in
-    let eval_tree, abs = extract_abs abs (concl rw.thm, th_name) eval_tree in
+    let eval_tree, abs = extract_abs abs (concl rw.eq_thm, th_name) eval_tree in
     let case = {
       vars = rw.fv;
       rhs = eval_tree;
@@ -662,7 +663,7 @@ let compile_rules db rules =
   (* Add free variables from abstractions *)
   let th_exprs =
     flat (map (fun rule -> rule.rewrites) rules)
-      |> map (fun rw -> rw.thm_name)
+      |> map (fun rw -> rw.thm_ref)
       |> setify
       |> map get_th_expr in
   let abs_th_exprs = map get_abs_expr (snd abs) in
@@ -811,12 +812,11 @@ let print_rules db fmt ?term rules =
     (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
 
 let head_split_expr db =
-  let opts = database_options db in
   let rewrites =
-    let rw_list = mk_list_expr (map (fun (s, _) -> Raw s) opts.extra_rewrites) in
+    let rw_list = mk_list_expr (map (fun (s, _) -> Raw s) db.extra_rewrites) in
     mk_let ("extra_rw", App (Raw "PURE_REWRITE_RULE", rw_list)) in
   let rules =
-    let r_list = mk_list_expr (map (fun (s, _) -> Raw s) opts.extra_rules) in
+    let r_list = mk_list_expr (map (fun (s, _) -> Raw s) db.extra_rules) in
     mk_let ("extra_rules", mk_app (Raw "rev_itlist", [Raw "(o)"; r_list; Raw "I"])) in
   Let (false, "local_split_thm", [Raw "th"],
     chain_let [
