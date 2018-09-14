@@ -22,12 +22,49 @@ let db = add_thms (empty_db "test0") [
 
 (* set_rule db `(=):num->num->bool`;; *)
 
-let tm = `FILTER (\x. x = 2) [1;2;3;4]`;;
+let tm = `FILTER (\x. x > 2) [1;2;3;4]`;;
 let consts = dependencies db tm ~inst_types:false;;
 map (map (fun c -> c, type_of c)) consts;;
 write_rules_consts db "out2.hl" consts ~term:tm;;
 
 loadt "out2.hl";;
+
+(* General tests *)
+
+let d1 = new_definition `d1 x = FILTER (\x. (\x y. x) x 2 > 3) [x;2;3]`;;
+let d2 = new_definition 
+  `d2 a b = match (a, b) with
+    | (1, 2) -> (\x y. x) a b
+    | (3, 4) -> (\x. x + b) (a + b)`;;
+let d3 = new_definition
+  `d3 a b = match (a, b) with
+   | (1, a) -> (\x y. x) a b
+   | (3, 4) -> a + b`;;
+let d4 = new_definition
+  `d4 a b = match b with
+   | a -> a + b`;;
+let d5 = new_definition
+  `d5 a = match a with
+   | a -> 
+    match a with
+    | 1 -> 1
+    | _ -> 10`;;
+
+let d1', eqs1 = replace_abstractions d1;;
+let d2', eqs2 = replace_abstractions d2;;
+let d3', eqs3 = replace_abstractions d3;;
+let d4', eqs4 = replace_abstractions d4;;
+let d5', eqs5 = replace_abstractions d5;;
+
+eliminate_top_match (SPEC_ALL d1');;
+eliminate_top_match (SPEC_ALL d2');;
+eliminate_top_match (SPEC_ALL d3');;
+eliminate_top_match (SPEC_ALL d4');;
+split_thm d1';;
+split_thm d2';;
+split_thm d3';;
+split_thm d4';;
+
 
 (* Test db 1 *)
 

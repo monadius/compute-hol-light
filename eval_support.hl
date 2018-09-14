@@ -158,10 +158,17 @@ let eliminate_top_match th =
   match dest_match rhs with
   | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
     map (fun (p, _, body) -> 
-      let th1 = INSTANTIATE (term_match [] arg p) th in
-      let th_concl = mk_eq (th1 |> concl |> rand, body) in
-      let th_proof = CONV_TAC (TOP_DEPTH_CONV MATCH_CONV) THEN SIMP_TAC[COND_ID] in
-      let th2 = prove(th_concl, th_proof) in
+      let inst = term_match [] arg p in
+      let body' =
+        let fv = frees p in
+        let _, subs, _ = inst in
+        subst (filter (fun (_, v) -> not (mem v fv)) subs) body in
+      let th1 = INSTANTIATE inst th in
+      let th_concl = mk_eq (th1 |> concl |> rand, body') in
+      let th2 = prove(th_concl,
+        CONV_TAC (TOP_DEPTH_CONV MATCH_CONV) THEN 
+        SIMP_TAC[COND_ID]
+        THEN TRY ARITH_TAC) in
       TRANS th1 th2) pats
   | _ -> failwith "eliminate_top_match";;
 
@@ -194,13 +201,6 @@ let split_thm =
       |> List.map split 
       |> flat
       |> List.map (fun th -> PURE_REWRITE_RULE rewrites th);;
-
-
-let find_basic_definition const_name =
-  let test th =
-    try th |> concl |> lhand |> dest_const |> fst = const_name
-    with Failure _ -> false in
-  definitions() |> find test;;
 
 let find_abs_and_match =
   let rec find acc tm =
@@ -260,93 +260,32 @@ let replace_abstractions =
         try
           match dest_match tm with
           | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
-            create_match_def name tm arg pats
+            (try create_match_def name tm arg pats
+             with _ -> eval_error "A definition for match cannot be created" "create_match_def" [tm])
           | _ -> failwith "dest_match"
         with Failure _ ->
           create_abs_def name tm in
       Hashtbl.add defs tm (repl_th, eq_th);
       repl_th, eq_th
   in
-  let replace th tm =
-    let path = find_path ((=) tm) (concl th) in
+  let replace th path =
+    let tm = follow_path path (concl th) in
     let repl_th, eq_th = create_def tm in
     let th' = CONV_RULE (PATH_CONV path (REWR_CONV repl_th)) th in
-    th', repl_th, eq_th
+    th', eq_th
   in
   fun th ->
-    let tms =  
-      BODY_CONJUNCTS th
-      |> map (fun th -> try eliminate_top_match th with _ -> [th])
-      |> flat |> end_itlist CONJ |> concl
-      |> find_abs_and_match in
-    map (replace th) tms;;
-
-
-    let tm = `\x y. x + &y * z`;;
-      let fv = frees tm;;
-      let name = Format.sprintf "$%d" !def_counter;;
-      let ty = List.fold_right mk_fun_ty (map type_of fv) (type_of tm);;
-      let var = mk_var (name, ty);;
-      let lhs = list_mk_comb (var, fv);;
-      let def_th = new_definition (mk_eq (lhs, tm)) |> SPEC_ALL;;
-      let args, _ = strip_gabs tm;;
-      let eq_th = List.fold_left AP_THM def_th args |> CONV_RULE (RAND_CONV GEN_BETAS_CONV);;
-      
-      eq_th;;
-      CONV_RULE GEN_BETAS_CONV eq_th;;
-      GEN_BETAS_CONV tm';;
-      AP_THM def_th (hd args);;
-      AP_THM (hd args) def_th;;
-
-(* let tm = `match (f:A->(B)option) x with | NONE -> f z | _ -> f x`;;
-let tm = find_abs_and_match (concl map_filter_DEF) |> hd;;
-let fv = frees tm;;
-let Some arg, pats = dest_match tm;;
-let arg_var = variant fv (mk_var ("arg", type_of arg));;
-let tm' = subst[arg_var, arg] tm;;
-let fv' = subtract (frees tm') [arg_var] @ [arg_var];;
-incr def_counter;;
-let name = Format.sprintf "$%d" !def_counter;;
-let ty = List.fold_right mk_fun_ty (map type_of fv') (type_of tm');;
-let var = mk_var (name, ty);;
-let lhs = list_mk_comb (var, fv');;
-let def_th = new_definition (mk_eq (lhs, tm')) |> SPEC_ALL;;
-let repl_th = SYM (INST[arg, arg_var] def_th);;
-let eq_th = end_itlist CONJ (eliminate_top_match def_th);;
-
-let th = def_th;;
-let tm = concl th;;
-let _, rhs = dest_eq tm;;
-let Some arg, pats = dest_match rhs;;
-
-let p, _, body = el 1 pats;;
-let th1 = INSTANTIATE (term_match [] arg p) th;;
-let th_concl = mk_eq (th1 |> concl |> rand, body);;
-let th_proof = CONV_TAC (TOP_DEPTH_CONV MATCH_CONV) THEN SIMP_TAC[COND_ID];;
-let th2 = prove(th_concl, th_proof);;
-TRANS th1 th2;;
-
-frees tm';;
-
-let th = rev_DEF;;
-let repl_th, eq_th = hd (replace_abstractions rev_DEF);;
-let tm = rand (concl th);;
-REWR_CONV repl_th tm;;
-th;;
-
-let d1 = new_definition `d1 x = FILTER (\x. x > 3) [x;2;3]`;;
-replace_abstractions d1;;
-
-replace_abstractions rev_DEF;;
-replace_abstractions map_of_DEF;;
-replace_abstractions map_filter_DEF;;
-replace_abstractions fold_DEF;;
-let tm = `FILTER (\x. (\x. x) ((\(x, y). x) (x, 2) = (\x. x) 2)) [(\x. 1) 3;2;3]`;;
-find_abs_and_match tm;;
-dest_match (rand tm);;
-(*map (C find_path tm o (=)) @@ *)
-find_terms is_abs tm;;
-
-map_of_DEF;;
-
-strip_comb_gabs `(\(x, y) z. x + y) (1,2) 3`;; *)
+    let ths = th
+      |> PURE_REWRITE_RULE[LET_DEF; LET_END_DEF]
+      |> BODY_CONJUNCTS in
+    let ignore_tms = ths
+      |> map (rand o concl)
+      |> filter (can dest_match) in
+    let paths = ths
+      |> end_itlist CONJ |> concl
+      |> find_abs_and_match
+      |> C subtract ignore_tms
+      |> map (fun tm -> find_path ((=) tm) (concl th)) in
+    List.fold_left (fun (th, eq_ths) path ->
+      let th', eq_th = replace th path in
+      th', eq_th :: eq_ths) (th, []) paths;;
