@@ -49,12 +49,20 @@ let d5 = new_definition
     match a with
     | 1 -> 1
     | _ -> 10`;;
+let d6 = new_definition
+  `d6 a b = match a with
+   | 1 -> a
+   | 2 -> (match b with
+           | 1 -> 3
+           | 4 -> 5)`;;
 
 let d1', eqs1 = replace_abstractions d1;;
 let d2', eqs2 = replace_abstractions d2;;
 let d3', eqs3 = replace_abstractions d3;;
 let d4', eqs4 = replace_abstractions d4;;
+(* replace_abstractions d5 should fail *)
 let d5', eqs5 = replace_abstractions d5;;
+let d6', eqs6 = replace_abstractions d6;;
 
 eliminate_top_match (SPEC_ALL d1');;
 eliminate_top_match (SPEC_ALL d2');;
@@ -65,6 +73,21 @@ split_thm d2';;
 split_thm d3';;
 split_thm d4';;
 
+let db = add_thms (empty_db "test" ~eliminate_abs:true) [
+  "d1", d1, [];
+  "d2", d2, [];
+  "d3", d3, [];
+  "d4", d4, [];
+  "d6", d6, [];
+];;
+
+find_most_specific_entry db `d1`;;
+find_most_specific_entry db `d3`;;
+let tm = `d6 2 4`;;
+let consts = dependencies db tm;;
+
+write_rules_consts db "out2.hl" consts ~term:tm;;
+loadt "out2.hl";;
 
 (* Test db 1 *)
 

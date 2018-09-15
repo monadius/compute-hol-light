@@ -34,6 +34,7 @@ type db_rec = {
 
 type database = {
   database_name: string;
+  eliminate_abs: bool;
   rules: (string, (term * db_rec) list) Hashtbl.t;
   mutable extra_rewrites: (string * thm) list;
   mutable extra_rules: (string * (thm -> thm)) list;
@@ -139,12 +140,14 @@ let () =
     "<=", "LE";
     ">=", "GE";
     "=", "EQ";
+    "$", "tmp";
 ];;
 
 (* Database functions *)
 
-let empty_db name = {
+let empty_db ?(eliminate_abs = false) name = {
     database_name = name;
+    eliminate_abs = eliminate_abs;
     rules = Hashtbl.create 100;
     extra_rewrites = [];
     extra_rules = [];
@@ -312,7 +315,22 @@ let add_thms db ths =
     | [] -> add_all None
     | _ -> List.iter (fun tm -> add_all (Some tm)) type_tms
   in
-  List.iter add ths;
+  (* TODO: compute type_tms for new definitions *)
+  let add_def th =
+    let const = th |> BODY_CONJUNCTS |> hd |> concl |> lhand |> strip_comb |> fst in
+    let name, _ = dest_const const in
+    if not (can (find_most_specific_entry db) const) then
+      add (name, th, [])
+  in
+  let process ((name, th, type_tms) as args) =
+    if not db.eliminate_abs then add args
+    else begin
+      let th', def_ths = replace_abstractions th in
+      add (name, th', type_tms);
+      List.iter add_def def_ths
+    end
+  in
+  List.iter process ths;
   db;;
 
 let spec_rule db rule type_tm =
