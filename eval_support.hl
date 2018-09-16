@@ -97,10 +97,10 @@ let strip_comb_gabs tm =
   | Const ("GABS", _) as op, a1 :: args -> mk_comb (op, a1), args
   | op, args as r -> r;;
 
-let inst_type_thms tm ths =
+let inst_type_thms ty ths =
   let inst_type th =
     let op, _ = concl th |> dest_eq |> fst |> strip_comb_gabs in
-    let tyi = type_match (type_of op) (type_of tm) [] in
+    let tyi = type_match (type_of op) ty [] in
     INST_TYPE tyi th in
   List.map inst_type ths;;
 
@@ -275,9 +275,8 @@ let replace_abstractions =
     th', eq_th
   in
   fun th ->
-    let ths = th
-      |> PURE_REWRITE_RULE[LET_DEF; LET_END_DEF]
-      |> BODY_CONJUNCTS in
+    let th = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] th in
+    let ths = BODY_CONJUNCTS th in
     let ignore_tms = ths
       |> map (rand o concl)
       |> filter (can dest_match) in

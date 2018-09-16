@@ -110,6 +110,7 @@ let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
     with _ -> 
       let rw = {
         f_name = (incr index; Format.sprintf "abs_%d" !index);
+        f_prefix = "";
         const = tm;
         type_inst_const = None;
         nargs = List.length (fst (strip_gabs tm));
@@ -520,7 +521,7 @@ let compile_rules db rules =
       let e2 =
         match get_type_inst_const name with
         | None -> e1
-        | Some tm -> mk_app (Raw "inst_type_thms", [Term tm; e1]) in
+        | Some tm -> mk_app (Raw "inst_type_thms", [Type (type_of tm); e1]) in
       mk_app (Raw "map", [Raw "standardize"; e2]) in
     let names = enum_names (name ^ "_case") n in
     let pat_names = enum_names "th" n in

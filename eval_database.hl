@@ -25,6 +25,7 @@ type rewrite_rec = {
 
 type db_rec = {
   f_name: string;
+  f_prefix: string;
   const: term;
   type_inst_const: term option;
   nargs: int;
@@ -254,9 +255,10 @@ let set_rule db ?name const =
   let names = 
     try get_entries db [c_name] |> List.map (fun e -> e.f_name)
     with Not_found -> [] in
+  let f_prefix = fix_name c_name in
   let f_name = variant_name names @@
     match name with
-    | None -> ["f"; fix_name c_name; suffix_of_type const]
+    | None -> ["f"; f_prefix; suffix_of_type const]
                 |> List.filter (fun s -> s <> "")
                 |> String.concat "_"
                 |> fix_identifier
@@ -267,6 +269,7 @@ let set_rule db ?name const =
     | _ -> 0 in
   let entry: db_rec = {
     f_name = f_name;
+    f_prefix = f_prefix;
     const = const;
     type_inst_const = None;
     nargs = nargs;
@@ -292,13 +295,14 @@ let add_thm db ?type_tm ?fname (thm_name, index, eq_th) =
       let names = 
         try get_entries db [name] |> List.map (fun e -> e.f_name)
         with Not_found -> [] in
-      let fname = match fname with Some s -> s | _ -> name in
+      let fname = fix_name (match fname with Some s -> s | _ -> name) in
       let e = {
-        f_name = ["f"; fix_name fname; suffix_of_type key_const]
+        f_name = ["f"; fname; suffix_of_type key_const]
                   |> List.filter (fun s -> s <> "")
                   |> String.concat "_"
                   |> fix_identifier
                   |> variant_name names;
+        f_prefix = fname;
         const = key_const;
         type_inst_const = if key_const = const then None else Some key_const;
         nargs = List.length arg_pats;
@@ -353,7 +357,9 @@ let add_thms db ths =
         db.name_counter <- n2;
         db.derived_thms <- derived :: db.derived_thms;
         add (derived.new_name, th', type_tms);
-        List.iter (add_def name) (zip (zip def_ths derived.eq_names) (1--List.length def_ths))
+        (* TODO: there should be a better and more robust way to get this name *)
+        let cname, _ = th' |> BODY_CONJUNCTS |> hd |> concl |> dest_eq |> fst |> strip_comb |> fst |> dest_const in
+        List.iter (add_def (fix_name cname)) (zip (zip def_ths derived.eq_names) (1--List.length def_ths))
       end
   in
   List.iter process ths;
@@ -364,7 +370,7 @@ let spec_rule db rule type_tm =
     set_rule db type_tm
   else
     List.iter (fun rw ->
-      add_thm db ~type_tm (rw.thm_name, rw.thm_index, rw.thm)) 
+      add_thm db ~type_tm ~fname:rule.f_prefix (rw.thm_name, rw.thm_index, rw.thm)) 
     (List.rev rule.rewrites);;
 
 module Term_set = Set.Make(

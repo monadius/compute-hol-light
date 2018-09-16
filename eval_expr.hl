@@ -9,6 +9,7 @@ type expr =
   | If of expr * expr * expr
   | App of expr * expr
   | Term of term
+  | Type of hol_type
   | String of string
   | Raw of string;;
 
@@ -91,6 +92,8 @@ let print_expr =
   | Term tm -> 
     Format.fprintf fmt "`(%s):%s`" 
       (string_of_term tm) (string_of_type (type_of tm))
+  | Type ty ->
+    Format.fprintf fmt "`:%s`" (string_of_type ty)
   | Tuple es -> 
     Format.fprintf fmt "(%a)" 
       (Format.pp_print_list 
@@ -151,6 +154,7 @@ let print_expr =
   print_expr;;
 
 let print_exprs fmt exprs =
-  let sep fmt () = Format.fprintf fmt ";;@,@," in
-  Format.fprintf fmt "@[<v>%a;;@]@."
-    (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
+  if exprs <> [] then
+    let sep fmt () = Format.fprintf fmt ";;@,@," in
+    Format.fprintf fmt "@[<v>%a;;@]@."
+      (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
