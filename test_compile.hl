@@ -57,6 +57,10 @@ let d6 = new_definition
            | 4 -> 5)`;;
 let d7 = new_definition
   `d7 a = let (x, y) = a in (y, x)`;;
+let d8 = new_definition
+  `d8 a t = MAP (function (1,a) -> a + t | (2,y) -> 1 + y) [(a,2); (1,a)]`;;
+let d9 = new_definition
+  `d9 p t = (function (1, y) -> y | (2, y) -> t) p`;;
 
 let d1', eqs1 = replace_abstractions d1;;
 let d2', eqs2 = replace_abstractions d2;;
@@ -66,11 +70,14 @@ let d4', eqs4 = replace_abstractions d4;;
 let d5', eqs5 = replace_abstractions d5;;
 let d6', eqs6 = replace_abstractions d6;;
 let d7', eqs7 = replace_abstractions d7;;
+let d8', eqs8 = replace_abstractions d8;;
+let d9', eqs9 = replace_abstractions d9;;
 
 eliminate_top_match (SPEC_ALL d1');;
 eliminate_top_match (SPEC_ALL d2');;
 eliminate_top_match (SPEC_ALL d3');;
 eliminate_top_match (SPEC_ALL d4');;
+eliminate_top_match (SPEC_ALL d9');;
 split_thm d1';;
 split_thm d2';;
 split_thm d3';;
@@ -83,12 +90,16 @@ let db = add_thms (empty_db "test" ~eliminate_abs:true) [
   "d4", d4, [];
   "d6", d6, [];
   "d7", d7, [];
+  "d8", d8, [];
+  "d9", d9, [];
 ];;
 
 find_most_specific_entry db `d1`;;
 find_most_specific_entry db `d3`;;
 let tm = `d3 1 2 + d2 1 2`;;
 let tm = `d7 (1, 2)`;;
+let tm = `d8 1 2`;;
+let tm = `d9 (1, x) [&7]`;;
 let consts = dependencies db tm ~inst_types:true;;
 
 write_rules_consts db "out2.hl" consts ~term:tm;;

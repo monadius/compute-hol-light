@@ -339,7 +339,7 @@ let add_thms db ths =
   let add_def base_name ((th, th_name), index) =
     let const = th |> BODY_CONJUNCTS |> hd |> concl |> lhand |> strip_comb |> fst in
     if not (can (find_most_specific_entry db) const) then
-      add ~fname:(Format.sprintf "abs%d_%s" index base_name) (th_name, th, [])
+      add ~fname:(Format.sprintf "%s_abs%d" base_name index) (th_name, th, [])
   in
   let process ((name, th, type_tms) as args) =
     if not db.eliminate_abs then add args

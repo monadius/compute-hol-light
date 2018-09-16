@@ -234,7 +234,7 @@ let replace_abstractions =
         |> CONV_RULE (RAND_CONV GEN_BETAS_CONV) in
     repl_th, eq_th
   in
-  let create_match_def name tm arg pats =
+  let create_match_def name tm arg =
     let fv = frees tm in
     let arg_var = variant fv (mk_var ("arg", type_of arg)) in
     let tm' = subst[arg_var, arg] tm in
@@ -247,6 +247,17 @@ let replace_abstractions =
     let eq_th = end_itlist CONJ (eliminate_top_match def_th) in
     repl_th, eq_th
   in
+  let create_function_def name tm =
+    let fv = frees tm in
+    let arg_var = variant fv (mk_var ("arg", type_of tm |> dest_fun_ty |> fst)) in
+    let ty = List.fold_right mk_fun_ty (map type_of fv) (type_of tm) in
+    let var = mk_var (name, ty) in
+    let lhs = list_mk_comb (var, fv) in
+    let def_th = new_definition (mk_eq (lhs, tm)) |> SPEC_ALL in
+    let repl_th = SYM def_th in
+    let eq_th = end_itlist CONJ (eliminate_top_match (AP_THM def_th arg_var)) in
+    repl_th, eq_th
+  in
   let rec gen_name () =
     let name = Format.sprintf "$%d" !def_counter in
     incr def_counter;
@@ -257,11 +268,15 @@ let replace_abstractions =
     with Not_found ->
       let name = gen_name () in
       let repl_th, eq_th =
+        let no_guards = forall (function (_, None, _) -> true | _ -> false) in
         try
           match dest_match tm with
-          | Some arg, pats when forall (function (_, None, _) -> true | _ -> false) pats ->
-            (try create_match_def name tm arg pats
+          | Some arg, pats when no_guards pats ->
+            (try create_match_def name tm arg
              with _ -> eval_error "A definition for match cannot be created" "create_match_def" [tm])
+          | None, pats when no_guards pats ->
+            (try create_function_def name tm
+             with _ -> eval_error "A definition for function cannot be created" "create_match_def" [tm])
           | _ -> failwith "dest_match"
         with Failure _ ->
           create_abs_def name tm in
@@ -279,7 +294,7 @@ let replace_abstractions =
     let ths = BODY_CONJUNCTS th in
     let ignore_tms = ths
       |> map (rand o concl)
-      |> filter (can dest_match) in
+      |> filter (fun tm -> try fst (dest_match tm) <> None with _ -> false) in
     let paths = ths
       |> end_itlist CONJ |> concl
       |> find_abs_and_match
