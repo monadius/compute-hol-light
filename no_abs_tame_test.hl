@@ -197,7 +197,7 @@ let rules = [
   "tameEnumFilterBounded_NO_ABS", tameEnumFilterBounded_NO_ABS, [];
 ];;
 
-let db = add_thms (tame_default_db ()) rules;;
+let db = add_thms (tame_default_db ~eliminate_abs:false ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
 set_extra_for_consts db Extra_memo [
   (* `bool_to_num`; *)

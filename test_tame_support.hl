@@ -22,8 +22,8 @@ needs "eval_compile.hl";;
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;
 
-let tame_default_db () =
-  let db = empty_db "tame" in
+let tame_default_db ~eliminate_abs () =
+  let db = empty_db ~eliminate_abs "tame" in
   List.iter (fun c -> set_rule db c) [
     `(=):num->num->bool`; `(=):(num)list->(num)list->bool`; `(=):face->face->bool`;
     `(=):num#num#num->num#num#num->bool`;
@@ -147,9 +147,6 @@ let f_EQ_bool =
     | _ -> failwith "error"
   in
   f_EQ;;
-
-compile_term (tame_default_db()) "t" `a:num = x /\ b:num = y /\ c:num = z`
-    |> print_expr Format.std_formatter;;
 
 let f_EQ_num_num_num =
   let refl_eq = (standardize o prove)(`p:(num#num#num) = p <=> T`, REWRITE_TAC[]) in

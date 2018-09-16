@@ -158,7 +158,7 @@ let rules = [
   "tameEnumFilterBounded_DEF", tameEnumFilterBounded_DEF, [];
 ];;
 
-let db = add_thms (tame_default_db ()) rules;;
+let db = add_thms (tame_default_db ~eliminate_abs:true ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
 (* let consts = dependencies db `tameEnumFilterBounded` ~inst_types:false *)
 set_extra_for_consts db Extra_memo [
@@ -218,6 +218,7 @@ loadt "out.hl";;
 (* 9.797s with APPEND_UNROLL8 *)
 (* 9.653s with nth_UNROLL15, maps_UNROLL7, count_UNROLL7 *)
 (* 8.874s with memos *)
+(* 2.649s with eliminate_abs *)
 reset_all_counters();;
 (* reset_core_counters();; *)
 clear_arg_lists();;

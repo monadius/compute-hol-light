@@ -55,6 +55,8 @@ let d6 = new_definition
    | 2 -> (match b with
            | 1 -> 3
            | 4 -> 5)`;;
+let d7 = new_definition
+  `d7 a = let (x, y) = a in (y, x)`;;
 
 let d1', eqs1 = replace_abstractions d1;;
 let d2', eqs2 = replace_abstractions d2;;
@@ -63,6 +65,7 @@ let d4', eqs4 = replace_abstractions d4;;
 (* replace_abstractions d5 should fail *)
 let d5', eqs5 = replace_abstractions d5;;
 let d6', eqs6 = replace_abstractions d6;;
+let d7', eqs7 = replace_abstractions d7;;
 
 eliminate_top_match (SPEC_ALL d1');;
 eliminate_top_match (SPEC_ALL d2');;
@@ -79,12 +82,14 @@ let db = add_thms (empty_db "test" ~eliminate_abs:true) [
   "d3", d3, [];
   "d4", d4, [];
   "d6", d6, [];
+  "d7", d7, [];
 ];;
 
 find_most_specific_entry db `d1`;;
 find_most_specific_entry db `d3`;;
 let tm = `d3 1 2 + d2 1 2`;;
-let consts = dependencies db tm;;
+let tm = `d7 (1, 2)`;;
+let consts = dependencies db tm ~inst_types:true;;
 
 write_rules_consts db "out2.hl" consts ~term:tm;;
 loadt "out2.hl";;
