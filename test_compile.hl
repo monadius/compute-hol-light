@@ -83,7 +83,7 @@ let db = add_thms (empty_db "test" ~eliminate_abs:true) [
 
 find_most_specific_entry db `d1`;;
 find_most_specific_entry db `d3`;;
-let tm = `d6 2 4`;;
+let tm = `d3 1 2 + d2 1 2`;;
 let consts = dependencies db tm;;
 
 write_rules_consts db "out2.hl" consts ~term:tm;;

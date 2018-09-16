@@ -144,9 +144,6 @@ let rec extract_cond_types eval_tree =
   | Refl _ -> [];;
 
 
-let enum_names s n =
-  List.map (fun k -> s ^ string_of_int k) (1 -- n);;
-
 type compile_env = {
   cond_names: (hol_type * string) list;
   (* name + global flag (for variables) *)
@@ -806,9 +803,7 @@ let print_rules db fmt ?term rules =
     match term with
     | None -> exprs'
     | Some tm -> exprs' @ [compile_term db "result" tm] in
-  let sep fmt () = Format.fprintf fmt ";;@,@," in
-  Format.fprintf fmt "@[<v>%a;;@]@."
-    (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;
+  print_exprs fmt exprs;;
 
 let head_split_expr db =
   let rewrites =
@@ -822,6 +817,16 @@ let head_split_expr db =
       rewrites; rules;
       Raw "split_thm th |> map extra_rw |> map extra_rules"
     ], None);;
+
+let derived_thm_expr derived =
+  let vars = List.map mk_raw (enum_names "eq" (List.length derived.eq_names)) in
+  let base_pat =
+    Format.sprintf "%s, %s" derived.new_name (String.concat ", " derived.eq_names) in
+  let match_expr =
+    Match(Raw (Format.sprintf "replace_abstractions (%s)" derived.original_name),
+      [mk_tuple [Raw "th"; mk_list_expr vars], mk_tuple (Raw "th" :: vars);
+       Raw "_", Raw (Format.sprintf "failwith \"%s\"" derived.new_name)]) in
+  mk_let (base_pat, match_expr);;
 
 let print_global_defs fmt () =
   Format.pp_print_string fmt
@@ -844,6 +849,8 @@ let write_rules db ?(margin = 200) ?term fname rules =
     print_global_defs fmt ();
     Format.pp_print_newline fmt ();
     Format.fprintf fmt "%a;;@\n@." print_expr (head_split_expr db);
+    print_exprs fmt (List.map derived_thm_expr db.derived_thms);
+    Format.pp_print_newline fmt ();
     print_rules db fmt ?term rules;
     Format.pp_print_flush fmt ();
     close_out oc

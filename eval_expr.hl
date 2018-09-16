@@ -149,3 +149,8 @@ let print_expr =
           Format.fprintf fmt f
             print_expr pat print_expr body)) cases in
   print_expr;;
+
+let print_exprs fmt exprs =
+  let sep fmt () = Format.fprintf fmt ";;@,@," in
+  Format.fprintf fmt "@[<v>%a;;@]@."
+    (Format.pp_print_list ~pp_sep:sep print_expr) exprs;;

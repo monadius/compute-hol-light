@@ -32,10 +32,18 @@ type db_rec = {
   mutable rewrites: rewrite_rec list;
 };;
 
+type derived_thm = {
+  original_name: string;
+  new_name: string;
+  eq_names: string list;
+};;
+
 type database = {
   database_name: string;
   eliminate_abs: bool;
   rules: (string, (term * db_rec) list) Hashtbl.t;
+  mutable name_counter: int;
+  mutable derived_thms: derived_thm list;
   mutable extra_rewrites: (string * thm) list;
   mutable extra_rules: (string * (thm -> thm)) list;
 };;
@@ -52,6 +60,11 @@ let rec get_type_vars t =
   match t with
   | Ttype ty -> tyvars ty
   | Tfun (args, r) -> end_itlist union (tyvars r :: map get_type_vars args);;
+
+let enum_names_range s ns =
+  List.map (fun k -> s ^ string_of_int k) ns;;
+
+let enum_names s n = enum_names_range s (1 -- n);;
 
 let string_of_term_type tm =
   Format.sprintf "%s:%s" (string_of_term tm) (string_of_type (type_of tm));;
@@ -149,6 +162,8 @@ let empty_db ?(eliminate_abs = false) name = {
     database_name = name;
     eliminate_abs = eliminate_abs;
     rules = Hashtbl.create 100;
+    name_counter = 0;
+    derived_thms = [];
     extra_rewrites = [];
     extra_rules = [];
   };;
@@ -260,13 +275,13 @@ let set_rule db ?name const =
   } in
   add_entry db const entry;;
 
-let add_thm db ?type_tm (thm_name, index, eq_th) =
+let add_thm db ?type_tm ?fname (thm_name, index, eq_th) =
   let const, _ = concl eq_th |> dest_eq |> fst |> strip_comb in
   let name, cty = dest_const const in
   let key_const, type_inst = 
     match type_tm with 
     | None -> const, []
-    | Some const -> const, type_match cty (type_of const) [] in
+    | Some ty_const -> ty_const, type_match cty (type_of ty_const) [] in
   if name <> fst (dest_const key_const) then failwith "add_thm: bad type_tm";
   let th1 = INST_TYPE type_inst eq_th in
   let lhs, rhs = dest_eq (concl th1) in
@@ -277,8 +292,9 @@ let add_thm db ?type_tm (thm_name, index, eq_th) =
       let names = 
         try get_entries db [name] |> List.map (fun e -> e.f_name)
         with Not_found -> [] in
+      let fname = match fname with Some s -> s | _ -> name in
       let e = {
-        f_name = ["f"; fix_name name; suffix_of_type key_const]
+        f_name = ["f"; fix_name fname; suffix_of_type key_const]
                   |> List.filter (fun s -> s <> "")
                   |> String.concat "_"
                   |> fix_identifier
@@ -307,28 +323,38 @@ let add_thm db ?type_tm (thm_name, index, eq_th) =
 let add_thms db ths =
   let extra_rw = PURE_REWRITE_RULE (map snd db.extra_rewrites) in
   let extra_rules = rev_itlist (o) (map snd db.extra_rules) I in
-  let add (name, th, type_tms) =
+  let add ?fname (name, th, type_tms) =
     let eqs = split_thm th |> map extra_rw |> map extra_rules in
     let add_all type_tm = 
-      List.iteri (fun i th -> add_thm db ?type_tm (name, i + 1, th)) eqs in
+      List.iteri (fun i th -> add_thm db ?type_tm ?fname (name, i + 1, th)) eqs in
     match type_tms with
     | [] -> add_all None
     | _ -> List.iter (fun tm -> add_all (Some tm)) type_tms
   in
   (* TODO: compute type_tms for new definitions *)
-  let add_def th =
+  let add_def base_name ((th, th_name), index) =
     let const = th |> BODY_CONJUNCTS |> hd |> concl |> lhand |> strip_comb |> fst in
-    let name, _ = dest_const const in
     if not (can (find_most_specific_entry db) const) then
-      add (name, th, [])
+      add ~fname:(Format.sprintf "abs%d_%s" index base_name) (th_name, th, [])
   in
   let process ((name, th, type_tms) as args) =
     if not db.eliminate_abs then add args
-    else begin
+    else
       let th', def_ths = replace_abstractions th in
-      add (name, th', type_tms);
-      List.iter add_def def_ths
-    end
+      if def_ths = [] then add args
+      else begin
+        let n1 = db.name_counter + 1 in
+        let n2 = n1 + List.length def_ths - 1 in
+        let derived = {
+          original_name = name;
+          new_name = "no_abs_" ^ name;
+          eq_names = enum_names_range "abs_def_" (n1 -- n2);
+        } in
+        db.name_counter <- n2;
+        db.derived_thms <- derived :: db.derived_thms;
+        add (derived.new_name, th', type_tms);
+        List.iter (add_def name) (zip (zip def_ths derived.eq_names) (1--List.length def_ths))
+      end
   in
   List.iter process ths;
   db;;
