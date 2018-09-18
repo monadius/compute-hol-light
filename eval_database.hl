@@ -13,7 +13,11 @@ type pattern =
 | Papp of term * pattern list;;
 
 type memo_type = Hashtbl_memo | Weak_memo | Assoc_memo of int;;
-type extra = Extra_counter | Extra_memo of memo_type | Extra_arg_list;;
+
+type extra = 
+  | Extra_counter of int
+  | Extra_memo of memo_type 
+  | Extra_arg_list;;
 
 type rewrite_rec = {
   args: pattern list;
@@ -192,8 +196,9 @@ let add_entry db const entry =
 
 let same_extra e1 e2 =
   match e1, e2 with
-  | Extra_counter, Extra_counter -> true
+  | Extra_counter _, Extra_counter _ -> true
   | Extra_memo _, Extra_memo _ -> true
+  | Extra_arg_list, Extra_arg_list -> true
   | _ -> false;;
 
 let add_extra ls e =

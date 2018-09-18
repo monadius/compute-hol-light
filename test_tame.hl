@@ -161,8 +161,9 @@ let rules = [
 let db = add_thms (tame_default_db ~eliminate_abs:true ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
 (* let consts = dependencies db `tameEnumFilterBounded` ~inst_types:false *)
-set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [
-  (* `bool_to_num`; *)
+(* set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [ *)
+set_extra_for_consts db (Extra_memo Hashtbl_memo) [
+    (* `bool_to_num`; *)
   `squanderFace`;
   `maxGon`;
   (* `fst:num#num->num`; *)
@@ -193,7 +194,8 @@ set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [
 ];;
 
 let () =
-  set_extra_for_all db Extra_counter;
+  set_extra_for_all db (Extra_counter 0);
+  set_extra_for_names db (Extra_counter 100) ["worklist_tree_bounded"];
   (* set_rule db `(=):A->A->bool`; *)
   (* set_extra_for_all db Extra_arg_list; *)
   (* write_rules_names db "out.hl" const_names *)
@@ -220,8 +222,8 @@ loadt "out.hl";;
 (* 8.874s with memos *)
 (* 3.275s with eliminate_abs and without memos *)
 (* 3.246s with Weak_memo *)
-(* 2.649s with eliminate_abs and Hashtbl_memo *)
-(* 2.688s with eliminate_abs and Assoc_memo *)
+(* 2.649s with Hashtbl_memo *)
+(* 2.688s with Assoc_memo *)
 (* reset_core_counters() *)
 let () = ();;
 let () =

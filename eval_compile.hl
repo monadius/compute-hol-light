@@ -420,9 +420,18 @@ let compile_function env func =
                     [Raw "err"; String func.name; mk_list_expr arg_exprs])) in
       Try (expr, [case1; case2]) 
   in
-  let add_counter name expr =
-    mk_let ~body:(Some expr) 
-      ("()", App (Raw "incr", Raw (Format.sprintf "counter_%s" name))) 
+  let add_counter report_interval name expr =
+    let cname = Format.sprintf "counter_%s" name in
+    let report_expr =
+      if report_interval <= 0 then []
+      else
+        [mk_let ("()", 
+            Raw (Format.sprintf "if !%s mod %d = 0 then Format.printf \"%%d       \\r%@?\" !%s" 
+                    cname report_interval cname))] in
+    chain_let (
+      [mk_let ("()", App (Raw "incr", Raw cname))] @
+      report_expr @
+      [expr])
   in
   let add_arg_list name arg_exprs expr =
     chain_let [
@@ -449,7 +458,7 @@ let compile_function env func =
   in
   let add_extra arg_exprs expr extra =
     match extra with
-    | Extra_counter -> add_counter func.name expr
+    | Extra_counter t -> add_counter t func.name expr
     | Extra_memo t -> add_memo t func.name arg_exprs expr
     | Extra_arg_list -> add_arg_list func.name arg_exprs expr
   in
@@ -491,7 +500,7 @@ let compile_rules db rules =
   let get_extra_exprs fs =
     let get_extra f es extra =
       match extra with
-      | Extra_counter ->
+      | Extra_counter _ ->
         let e = mk_let (Format.sprintf "counter_%s" f.name, 
                         App (Raw "create_counter", String f.name)) in
         e :: es
