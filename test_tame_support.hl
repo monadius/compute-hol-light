@@ -17,7 +17,7 @@ let f_EQ_num tm1 tm2 = fst (Nat_arith.neq tm1 tm2);;
 
 let numeral = Nat_arith.replace_numerals;;
 
-needs "eval_compile.hl";;
+loadt "eval_compile.hl";;
 
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;

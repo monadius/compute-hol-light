@@ -56,6 +56,94 @@ let create_memo, clear_all_memos =
     Hashtbl.iter (fun _ m -> Hashtbl.clear m) memos in
   create, clear_all;;
 
+(* Need to turn off the HOL Light's lexer to access Ephemeron.K1 *)
+unset_jrh_lexer;;
+
+(* Does not work in OCaml 4.04 *)
+module Memo_hash = Ephemeron.K1.Make (
+  struct
+    type t = string list 
+    let equal = (=)
+    let hash = Hashtbl.hash
+  end);;
+
+set_jrh_lexer;;
+
+let create_weak_memo, clear_weak_memos, get_weak_memos =
+  let memos = Hashtbl.create 100 in
+  let create (name: string) =
+    try Hashtbl.find memos name
+    with Not_found ->
+      let memo: (thm)Memo_hash.t = Memo_hash.create 10000 in
+      Hashtbl.add memos name memo;
+      memo in
+  let clear_all () =
+    Hashtbl.iter (fun _ m -> Memo_hash.clear m) memos in
+  let get_all () =
+    Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
+  create, clear_all, get_all;;
+
+module Assoc = struct
+  type 'a t = {
+    data : 'a option array;
+    size : int;
+    attempts : int
+  }
+
+  let rec next_pow2 x n =
+    if x >= n || x * 2 > Sys.max_array_length then x
+    else next_pow2 (2 * x) n
+
+  let create ?(attempts = 2) n = 
+    let size = next_pow2 16 n in {
+      data = Array.make size None;
+      size = size;
+      attempts = attempts;
+    }
+
+  let clear h = Array.fill h.data 0 h.size None
+
+  let index h key = Hashtbl.hash key land (h.size - 1)
+
+  let next_index h i = (i * 17 + 1) land (h.size - 1)
+
+  let add h key v =
+    let rec add_aux n i =
+      match h.data.(i) with
+      | _ when n <= 0 -> h.data.(i) <- Some (key, v)
+      | None -> h.data.(i) <- Some (key, v)
+      | Some (k, _) ->
+        if k = key then h.data.(i) <- Some (key, v)
+        else add_aux (n - 1) (next_index h i) in
+    let i = index h key in
+    add_aux h.attempts i
+
+  let find h key =
+    let rec find_aux n i =
+      match h.data.(i) with
+      | _ when n < 0 -> raise Not_found
+      | None -> raise Not_found
+      | Some (k, v) ->
+        if k = key then v
+        else find_aux (n - 1) (next_index h i) in
+    let i = index h key in
+    find_aux h.attempts i
+end;;
+
+let create_assoc_memo, clear_assoc_memos, get_assoc_memos =
+  let memos = Hashtbl.create 100 in
+  let create size (name: string) =
+    try Hashtbl.find memos name
+    with Not_found ->
+      let memo: (string list * thm) Assoc.t = Assoc.create size in
+      Hashtbl.add memos name memo;
+      memo in
+  let clear_all () =
+    Hashtbl.iter (fun _ m -> Assoc.clear m) memos in
+  let get_all () =
+    Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
+  create, clear_all, get_all;;
+
 let create_arg_list, clear_arg_lists, all_arg_lists =
   let lists = Hashtbl.create 100 in
   let create (name: string) =

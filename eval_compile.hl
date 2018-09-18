@@ -431,13 +431,18 @@ let compile_function env func =
       expr
     ]
   in
-  let add_memo name arg_exprs expr =
+  let add_memo memo name arg_exprs expr =
+    let memo_find, memo_add =
+      match memo with
+      | Hashtbl_memo -> "Hashtbl.find", "Hashtbl.add"
+      | Assoc_memo _ -> "Assoc.find", "Assoc.add"
+      | Weak_memo -> "Memo_hash.find", "Memo_hash.add" in
     (* TODO: precise memos *)
     let key_expr = mk_let ("key", 
       mk_app (Raw "map", [Raw "hash_string_of_term"; mk_list_expr arg_exprs])) in
     let name_expr = Raw ("memo_" ^ name) in
-    let find_expr = mk_app (Raw "Hashtbl.find", [name_expr; Raw "key"]) in
-    let save_expr = mk_let ("()", mk_app (Raw "Hashtbl.add", [name_expr; Raw "key"; Raw "result"])) in
+    let find_expr = mk_app (Raw memo_find, [name_expr; Raw "key"]) in
+    let save_expr = mk_let ("()", mk_app (Raw memo_add, [name_expr; Raw "key"; Raw "result"])) in
     append_let_body key_expr
       (Try (find_expr, [Raw "Not_found",
         chain_let [mk_let ("result", expr); save_expr; Raw "result"]])) 
@@ -445,7 +450,7 @@ let compile_function env func =
   let add_extra arg_exprs expr extra =
     match extra with
     | Extra_counter -> add_counter func.name expr
-    | Extra_memo -> add_memo func.name arg_exprs expr
+    | Extra_memo t -> add_memo t func.name arg_exprs expr
     | Extra_arg_list -> add_arg_list func.name arg_exprs expr
   in
   let ty_inst =
@@ -490,9 +495,14 @@ let compile_rules db rules =
         let e = mk_let (Format.sprintf "counter_%s" f.name, 
                         App (Raw "create_counter", String f.name)) in
         e :: es
-      | Extra_memo ->
+      | Extra_memo t ->
+        let create =
+          match t with
+          | Hashtbl_memo -> "create_memo"
+          | Assoc_memo size -> Format.sprintf "create_assoc_memo %d" size
+          | Weak_memo -> "create_weak_memo" in
         let e = mk_let (Format.sprintf "memo_%s" f.name,
-                        App (Raw "create_memo", String f.name)) in
+                        App (Raw create, String f.name)) in
         e :: es
       | Extra_arg_list ->
         let e = mk_let (Format.sprintf "args_%s" f.name,
