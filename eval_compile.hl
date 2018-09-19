@@ -12,6 +12,17 @@ let rec split_while p = function
     else
       [], l;;
 
+let rec count_free_subterms stm tm =
+  if tm = stm then 1
+  else
+    match tm with
+    | Var _ | Const _ -> 0
+    | Comb (ltm, rtm) -> 
+      count_free_subterms stm ltm + count_free_subterms stm rtm
+    | Abs (v, btm) ->
+      if v = stm then 0
+      else count_free_subterms stm btm;;
+
 let is_fun_ty = can dest_fun_ty;;
 
 type app_arg_type = Arg_term | Arg_theorem | Arg_function;;
@@ -345,6 +356,7 @@ type func_info = {
   cases: case_info list;
 };;
 
+
 let compile_rhs env ty_inst case =
   let var_exprs =
     case.vars
@@ -359,10 +371,12 @@ let compile_rhs env ty_inst case =
     | None -> Raw case.th_name
     | Some expr ->
       mk_app (Raw "INST_TYPE", [expr; Raw case.th_name]) in
-  let inst =
-    List.map (fun tm ->
-      let name, _ = assoc tm env.tm_names in
-      name, "var_" ^ name) case.vars in
+  let inst = case.vars
+    |> List.map (fun tm -> count_free_subterms tm case.rhs_tm, tm)
+    |> List.sort (fun (k1, _) (k2, _) -> k2 - k1)
+    |> List.map (fun (_, tm) ->
+        let name, _ = assoc tm env.tm_names in
+        name, "var_" ^ name) in
   let inst_expr =
     if inst = [] then type_inst
     else
@@ -379,6 +393,7 @@ let compile_rhs env ty_inst case =
       mk_let ("rhs_eq", expr);
       mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
     ]);;
+
 
 let compile_function env func =
   let var_name vars i = fst (assoc (List.nth vars i) env.tm_names) in
