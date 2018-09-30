@@ -3,7 +3,20 @@ type pat =
   | Pvar of term
   (* lhs, rhs, optional as clause *)
   | Pcomb of pat * pat * term option
-  | Pabs of pat * pat * term option;;
+  | Pabs of pat * term option;;
+
+let string_of_pat =
+  let rec comb_str t p1 p2 p_as =
+    match p_as with
+    | Some tm -> sprintf "%s (%s, %s) as %s" t (str p1) (str p2) (string_of_term tm)
+    | None -> sprintf "%s (%s, %s)" t (str p1) (str p2)
+  and str = function
+  | Punused -> "_"
+  | Pvar tm -> string_of_term tm
+  | Pcomb (p1, p2, p_as) -> comb_str "Comb" p1 p2 p_as
+  | Pabs (p, p_as) -> comb_str "Abs" Punused p p_as
+  in
+  str;;
 
 (* Returns 1) a pattern for tm which matches terms in tms, 
            2) a list of unmatched terms in tms *)
@@ -18,21 +31,24 @@ let get_pattern =
   let rec simplify pat =
     match pat with
     | Pvar _ | Punused -> pat
-    | Pcomb (p1, p2, p_as) | Pabs (p1, p2, p_as) ->
+    | Pabs (p, p_as) ->
+      let p' = simplify p in
+      (match p', p_as with
+       | Punused, None -> Punused
+       | Punused, Some tm -> Pvar tm
+       | _ -> Pabs (p', p_as))
+    | Pcomb (p1, p2, p_as) ->
       let p1 = simplify p1 in
       let p2 = simplify p2 in
       match p1, p2, p_as with
       | Punused, Punused, None -> Punused
       | Punused, Punused, Some tm -> Pvar tm
-      | _ -> (match pat with 
-              | Pcomb _ -> Pcomb (p1, p2, p_as)
-              | Pabs _ -> Pabs (p1, p2, p_as)
-              | _ -> failwith "impossible")
+      | _ -> Pcomb (p1, p2, p_as)
   in
   let rec complexity = function
     | Punused | Pvar _ -> 0
-    | Pcomb (p1, p2, _) | Pabs (p1, p2, _) ->
-      complexity p1 + complexity p2 + 1 
+    | Pabs (p, _) -> complexity p + 1
+    | Pcomb (p1, p2, _) -> complexity p1 + complexity p2 + 1
   in
   let rec pattern tm tms =
     match tm with
@@ -40,35 +56,136 @@ let get_pattern =
     | Var _ | Const _ ->
       if mem tm tms then Pvar tm, subtract tms [tm]
       else Punused, tms
-    | Comb (ltm, rtm) | Abs (ltm, rtm) ->
+    | Abs (var, btm) ->
       let p_as, tms =
-        if mem tm tms then Some tm, filter ((<>) tm) tms
+        if mem tm tms then Some tm, subtract tms [tm]
         else None, tms in
-      (* let p1, tms1 = pattern ltm tms in
-      let p2, tms2 = pattern rtm tms1 in *)
-      let p1, p2, tms' = optimize tms ltm rtm in
-      match tm with
-      | Comb _ -> Pcomb (p1, p2, p_as), tms'
-      | Abs _ -> Pabs (p1, p2, p_as), tms'
-      | _ -> failwith "impossible"
-  and optimize tms ltm rtm =
-    let ltms = filter (fun tm -> can (find_term ((=) tm)) ltm) tms and
-        rtms = filter (fun tm -> can (find_term ((=) tm)) rtm) tms in
-    let tms' = union ltms rtms in
-    let ctms = intersect ltms rtms in
-    let ltms' = subtract ltms ctms and
-        rtms' = subtract rtms ctms in
-    let select_best (best, best_c) (s1, s2) =
-      let p1 = pattern ltm (s1 @ ltms') |> fst |> simplify in
-      let p2 = pattern rtm (s2 @ rtms') |> fst |> simplify in
-      let c = complexity p1 + complexity p2 in
-      if best_c < 0 || c < best_c then (p1, p2), c else best, best_c in
-    let (p1, p2), _ = List.fold_left select_best ((Punused, Punused), -1) (subsets ctms) in
-    p1, p2, tms'
+      let tms' = filter (fun tm -> free_in tm btm && not (vfree_in var tm)) tms in
+      let p1, _ = pattern btm tms' in
+      Pabs (p1, p_as), subtract tms tms'
+    | Comb (ltm, rtm) ->
+      let p_as, tms =
+        if mem tm tms then Some tm, subtract tms [tm]
+        else None, tms in
+      let ltms = filter (fun tm -> free_in tm ltm) tms and
+          rtms = filter (fun tm -> free_in tm rtm) tms in
+      let ctms = intersect ltms rtms in
+      let ltms' = subtract ltms ctms and
+          rtms' = subtract rtms ctms in
+      let select_best (best, best_c) (s1, s2) =
+        let p1 = pattern ltm (s1 @ ltms') |> fst |> simplify in
+        let p2 = pattern rtm (s2 @ rtms') |> fst |> simplify in
+        let c = complexity p1 + complexity p2 in
+        if best_c < 0 || c < best_c then (p1, p2), c else best, best_c in
+      let (p1, p2), _ = List.fold_left select_best ((Punused, Punused), -1) (subsets ctms) in
+      Pcomb (p1, p2, p_as), subtract tms (union ltms rtms)
   in
   fun tm tms ->
     let pat, tms' = pattern tm tms in
     simplify pat, tms';;
+
+
+    type arg_type = Arg_term | Arg_theorem | Arg_function;;
+
+
+    type eval_cmd = Cmd of eval_cmd_type * eval_cmd_rec
     
-      
-get_pattern `MAP (f (a + b)) [a + b;2;3;a + b]` [`f:num->num->num`; `a:num`; `a + b`; `b:num`];;
+    and eval_cmd_rec = {
+      result: term;
+      result_type: app_arg_type;
+    }
+    
+    and eval_cmd_type = 
+      | Cmd_ref of term
+      | Cmd_app of app_type * eval_cmd list
+      | Cmd_comb of eval_cmd * eval_cmd
+      | Cmd_trans of eval_cmd * eval_cmd
+      | Cmd_composite of eval_cmd list;;
+    
+    let mk_cmd (t, res, res_type) = Cmd (t, { result = res; result_type = res_type });;
+    
+    let mk_ref_cmd tm = mk_cmd (Cmd_ref tm, `T`, Arg_term);;
+    
+    let get_cmd_rec (Cmd (_, r)) = r;;
+    
+    
+    let get_eval_commands =
+      let comb op_tm arg_tms =
+        List.fold_left (fun (op, op_tm) arg_tm ->
+          let arg_cmd = mk_ref_cmd arg_tm in
+          let tm = mk_comb (op_tm, arg_tm) in
+          mk_cmd (Cmd_comb (op, arg_cmd), tm, Arg_theorem), tm)
+          (mk_ref_cmd op_tm, op_tm) arg_tms 
+        |> fst
+      in
+      let get_type env tm =
+        try (assoc tm env).result_type 
+        with Failure _ -> 
+          if is_fun_ty (type_of tm) then Arg_function else Arg_term 
+      in
+      let rec commands env tree =
+        match tree with
+        | Refl _ -> env, []
+        | Func_app f when can (assoc f.app_term) env -> env, []
+        | Func_app f ->
+          let env, cmds = 
+            List.fold_left (fun (env, cmds) arg -> 
+              let env', cmds' = commands env arg in
+              env', cmds @ cmds') 
+              (env, []) f.applied_args in
+          let cmd = 
+            match f.app_type with
+            | Abs_app _ -> failwith "Abs_app is not allowed"
+            | Basic_app op ->
+              let func = f.extra_args <> [] in
+              (* TODO: partial applications *)
+              let args = map get_eval_term f.applied_args in
+              comb op args
+            | Const_app _ | Var_app _ ->
+              let func = f.extra_args <> [] in
+              let arg_tms = map get_eval_term f.applied_args in
+              let args = map mk_ref_cmd arg_tms in
+              let cmd = mk_cmd (Cmd_app (f.app_type, args), f.app_term, if func then Arg_function else Arg_theorem) in
+              if forall (fun arg -> get_type env arg <> Arg_theorem) arg_tms then cmd
+              else
+                let op, _ = strip_comb f.app_term in
+                let c = comb op arg_tms in
+                let t = mk_cmd (Cmd_trans (mk_ref_cmd f.app_term, c), f.app_term, Arg_theorem) in
+                mk_cmd (Cmd_composite [cmd; t], f.app_term, Arg_theorem)
+          in
+          let r = get_cmd_rec cmd in
+          (r.result, r) :: env, cmds @ [cmd]
+      in
+      commands;;
+            
+    
+    
+    let pattern_tms global_args cmds =
+      let rec loop acc env = function
+        | [] -> acc
+        | cmd :: cmds ->
+        let acc' = union acc (subtract cmd.args env) in
+        let env' = cmd.result :: env in
+        loop acc' env' cmds in
+      loop [] global_args cmds;;
+    
+    let rec cmds_to_exprs = function
+      | [] -> []
+      | cmd :: cmds ->
+        mk_let ("x", cmd_expr cmd) :: cmds_to_exprs cmds
+    and cmd_expr (Cmd (t, r)) =
+      match t with
+      | Cmd_ref tm -> Term tm
+      | Cmd_app (app, args) ->
+        let f_name =
+          match app with
+          | Var_app tm -> string_of_term tm
+          | Const_app rule -> rule.f_name
+          | _ -> failwith "cmd_exp: Cmd_app" in
+        mk_app (mk_raw f_name, map cmd_expr args)
+      | Cmd_trans (a1, a2) ->
+        mk_app (mk_raw "TRANS", map cmd_expr [a1; a2])
+      | Cmd_comb (a1, a2) ->
+        App (mk_raw "MK_COMB", mk_tuple (map cmd_expr [a1; a2]))
+      | Cmd_composite cmds ->
+        chain_let (cmds_to_exprs cmds);;
