@@ -173,15 +173,29 @@ let get_eval_commands =
   commands;;
         
 
+let rec pattern_cmd env (Cmd (t, r)) =
+  let process_args env args =
+    List.fold_left (fun (env, tms) cmd ->
+      let env, tms' = pattern_cmd env cmd in
+      env, union tms tms') (env, []) args 
+  in
+  let env, tms =
+    match t with
+    | Cmd_ref tm -> env, if mem tm env then [] else [tm]
+    | Cmd_app (_, args) -> process_args env args
+    | Cmd_comb (a1, a2) -> process_args env [a1; a2]
+    | Cmd_trans (a1, a2) -> process_args env [a1; a2]
+    | Cmd_convert (_, _, a1) -> process_args env [a1]
+    | Cmd_composite cmds -> pattern_cmds env cmds in
+  r.result :: env, tms
 
-let pattern_tms global_args cmds =
-  let rec loop acc env = function
-    | [] -> acc
-    | cmd :: cmds ->
-    let acc' = union acc (subtract cmd.args env) in
-    let env' = cmd.result :: env in
-    loop acc' env' cmds in
-  loop [] global_args cmds;;
+and pattern_cmds env = function
+  | [] -> env, []
+  | cmd :: cmds ->
+    let env, tms1 = pattern_cmd env cmd in
+    let env, tms2 = pattern_cmds env cmds in
+    env, union tms1 tms2;;
+
 
 type env_rec = {
   names: (term * string) list;
