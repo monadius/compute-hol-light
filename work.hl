@@ -9,7 +9,7 @@ let string_of_pat names =
   let name tm = assocd tm names (string_of_term tm) in
   let rec comb_str t p1 p2 p_as =
     match p_as with
-    | Some tm -> sprintf "%s (%s, %s) as %s" t (str p1) (str p2) (name tm)
+    | Some tm -> sprintf "(%s (%s, %s) as %s)" t (str p1) (str p2) (name tm)
     | None -> sprintf "%s (%s, %s)" t (str p1) (str p2)
   and str = function
   | Punused -> "_"
@@ -85,7 +85,7 @@ let get_pattern =
     let pat, tms' = pattern tm tms in
     simplify pat, tms';;
     
-      
+
 type eval_cmd = Cmd of eval_cmd_type * eval_cmd_rec
 
 and eval_cmd_rec = {
@@ -99,6 +99,7 @@ and eval_cmd_type =
   | Cmd_lambda of term list * eval_cmd
   | Cmd_pair of eval_cmd * eval_cmd
   | Cmd_comb of eval_cmd * eval_cmd
+  | Cmd_comb_terms of eval_cmd * eval_cmd
   | Cmd_trans of eval_cmd * eval_cmd
   | Cmd_convert of eval_arg_type * eval_arg_type * eval_cmd
   | Cmd_composite of eval_cmd list;;
@@ -192,7 +193,44 @@ let get_eval_commands =
       (r.result, r.result_type) :: env, cmds @ [cmd]
   in
   commands;;
-        
+
+
+let optimize_comb tm =
+  let contains t = can (find_term ((=) t)) tm in
+  let rec optimize_cmd (Cmd (t, r)) =
+    let t' =
+      match t with
+      | Cmd_ref _ -> t
+      | Cmd_app (f, args) -> Cmd_app (f, map optimize_cmd args)
+      | Cmd_lambda (tms, a) -> Cmd_lambda (tms, optimize_cmd a)
+      | Cmd_pair (a1, a2) -> Cmd_pair (optimize_cmd a1, optimize_cmd a2)
+      | Cmd_trans (a1, a2) -> Cmd_trans (optimize_cmd a1, optimize_cmd a2)
+      | Cmd_comb_terms (a1, a2) -> Cmd_comb_terms (optimize_cmd a1, optimize_cmd a2)
+      | Cmd_convert (t1, t2, a) -> 
+        let a = optimize_cmd a in
+        Cmd_convert (t1, t2, a)
+        (* (match t1, t2 with
+         | Arg_theorem, Arg_function when contains r.result ->
+           Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd r.result)
+         | _ -> Cmd_convert (t1, t2, optimize_cmd a)) *)
+      | Cmd_composite cmds -> Cmd_composite (map optimize_cmd cmds)
+      | Cmd_comb (a1, a2) ->
+        let a1 = optimize_cmd a1 in
+        let a2 = optimize_cmd a2 in
+        match a1, a2 with
+        | Cmd (Cmd_convert (Arg_theorem, ((Arg_term | Arg_function) as t1), c1), r1),
+          Cmd (Cmd_convert (Arg_theorem, ((Arg_term | Arg_function) as t2), c2), r2) ->
+          if contains r.result then
+            Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd r.result)
+          else
+            let cmd1 = Cmd (Cmd_convert (Arg_term, t1, c1), { r1 with result_type = Arg_term }) in
+            let cmd2 = Cmd (Cmd_convert (Arg_term, t2, c2), { r2 with result_type = Arg_term }) in
+            let cmd = Cmd (Cmd_comb_terms (cmd1, cmd2), { r with result_type = Arg_term }) in
+            Cmd_convert (Arg_theorem, Arg_term, cmd)
+        | _ -> Cmd_comb (a1, a2) in
+    Cmd (t', r) in
+  map optimize_cmd;;
+
 
 let rec pattern_cmd env (Cmd (t, r)) =
   let process_args env args =
@@ -206,6 +244,7 @@ let rec pattern_cmd env (Cmd (t, r)) =
   | Cmd_lambda (tms, a1) -> process_args (tms @ env) [a1]
   | Cmd_pair (a1, a2) -> process_args env [a1; a2]
   | Cmd_comb (a1, a2) -> process_args env [a1; a2]
+  | Cmd_comb_terms (a1, a2) -> process_args env [a1; a2]
   | Cmd_trans (a1, a2) -> process_args env [a1; a2]
   | Cmd_convert (_, _, a1) -> process_args env [a1]
   | Cmd_composite cmds -> snd (pattern_cmds env cmds)
@@ -281,10 +320,13 @@ and cmd_expr env (Cmd (t, r)) =
     mk_app (mk_raw "TRANS", map (cmd_expr env) [a1; a2])
   | Cmd_comb (a1, a2) ->
     App (mk_raw "MK_COMB", mk_tuple (map (cmd_expr env) [a1; a2]))
+  | Cmd_comb_terms (a1, a2) ->
+    App (mk_raw "mk_comb", mk_tuple (map (cmd_expr env) [a1; a2]))
   | Cmd_convert (target, source, a) ->
       let arg = cmd_expr env a in
       let expr =
         match (target, source) with
+        | t1, t2 when t1 = t2 -> arg
         | Arg_term, Arg_function -> App (Raw "fst", arg)
         | Arg_term, Arg_theorem -> App (Raw "rand", App (Raw "concl", arg))
         | Arg_theorem, Arg_term -> App (Raw "REFL", arg)
@@ -303,6 +345,7 @@ let compile_tm tm =
   let tm_name = "tm" in
   let tree = build_eval_tree db tm |> optimize_eval_tree in
   let _, cmds = get_eval_commands [] tree in
+  let cmds = optimize_comb tm cmds in
   let _, p_tms = pattern_cmds (map fst args) cmds in
   let p_names =
     let names = map snd args in
