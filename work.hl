@@ -94,9 +94,9 @@ and eval_cmd_rec = {
 }
 
 and eval_cmd_type = 
-  | Cmd_ref of term
+  | Cmd_ref
   | Cmd_app of app_type * eval_cmd list
-  | Cmd_lambda of term list * eval_cmd
+  | Cmd_lambda of (term * eval_arg_type) list * eval_cmd
   | Cmd_pair of eval_cmd * eval_cmd
   | Cmd_comb of eval_cmd * eval_cmd
   | Cmd_comb_terms of eval_cmd * eval_cmd
@@ -104,90 +104,102 @@ and eval_cmd_type =
   | Cmd_convert of eval_arg_type * eval_arg_type * eval_cmd
   | Cmd_composite of eval_cmd list;;
 
-let mk_cmd (t, res, res_type) = Cmd (t, { result = res; result_type = res_type });;
+let mk_cmd (t, res, res_type) = 
+  Cmd (t, { result = res; result_type = res_type });;
 
-let mk_ref_cmd tm = mk_cmd (Cmd_ref tm, tm, Arg_term);;
+let mk_convert_cmd (target, (Cmd (_, r) as cmd))= 
+  mk_cmd (Cmd_convert (target, r.result_type, cmd), r.result, target);;
+
+let mk_ref_cmd0 (tm, ty) = mk_cmd (Cmd_ref, tm, ty);;
+
+let mk_ref_cmd (Cmd (_, r)) = mk_cmd (Cmd_ref, r.result, r.result_type);;
 
 let get_cmd_rec (Cmd (_, r)) = r;;
+
+let cmd_type (Cmd (_, r)) = r.result_type;;
 
 let cmd_result (Cmd (_, {result = r})) = r;;
 
 
 let get_eval_commands =
-  let get_type env tm =
+  (* let get_type env tm =
     try assoc tm env
     with Failure _ -> 
       if is_var tm && is_fun_ty (type_of tm) then Arg_function else Arg_term 
-  in
-  let convert_cmd env target tm cmd =
+  in *)
+  (* let convert_cmd target cmd =
     let ty = get_type env tm in
     if ty = target then cmd
     else
-      mk_cmd (Cmd_convert (target, ty, cmd), tm, target)
+      mk_convert_cmd (target, ty, cmd)
+  in *)
+  let convert_ref target (tm, ty) =
+    let rf = mk_ref_cmd0 (tm, ty) in
+    if ty = target then rf
+    else mk_convert_cmd (target, rf)
   in
-  let convert_ref env target tm =
-    convert_cmd env target tm (mk_ref_cmd tm)
-  in
-  let comb env op_tm arg_tms =
-    List.fold_left (fun (op, op_tm) arg_tm ->
-      let arg_cmd = convert_ref env Arg_theorem arg_tm in
+  let comb op_tm args =
+    List.fold_left (fun (op, op_tm) (arg_tm, arg_ty) ->
+      let arg_cmd = convert_ref Arg_theorem (arg_tm, arg_ty) in
       let tm = mk_comb (op_tm, arg_tm) in
-      mk_cmd (Cmd_comb (op, arg_cmd), tm, Arg_theorem), tm)
-      (convert_ref env Arg_theorem op_tm, op_tm) arg_tms 
+        mk_cmd (Cmd_comb (op, arg_cmd), tm, Arg_theorem), tm)
+      (convert_ref Arg_theorem (op_tm, Arg_term), op_tm) args 
     |> fst
   in
-  let get_extra_args env f =
+  let get_args f =
     let mk_tm i ty =
       let name = string_of_int (i + 1) in
       mk_var (name, ty) in
+    let args = map (fun arg -> get_eval_term arg, get_eval_type arg) f.applied_args in
+    let fixed = map (fun tm -> tm, Arg_term) f.fixed_args in
     let tys, _ = splitlist dest_fun_ty (type_of f.app_term) in
-    let extra = List.mapi mk_tm tys in
-      extra, zip extra f.extra_args @ env
+    let extra = zip (List.mapi mk_tm tys) f.extra_args in
+    fixed @ args, extra
   in
   let rec commands env tree =
     match tree with
     | Refl _ -> env, []
-    | Func_app f when can (assoc f.app_term) env -> env, []
+    | Func_app { app_term = tm; extra_args = [] } 
+        when mem (tm, Arg_theorem) env -> env, []
+    | Func_app { app_term = tm } 
+        when mem (tm, Arg_function) env -> env, []
     | Func_app f ->
       let env, cmds = 
         List.fold_left (fun (env, cmds) arg -> 
           let env', cmds' = commands env arg in
           env', cmds @ cmds') 
           (env, []) f.applied_args in
-      let cmd = 
+      let args, extra_args = get_args f in
+      let cmd =
         match f.app_type with
         | Abs_app _ -> failwith "Abs_app is not allowed"
         | Basic_app op ->
-          let args = map get_eval_term f.applied_args in
-          let extra_args, env = get_extra_args env f in
-          let cmd = comb env op (args @ extra_args) in
+          let cmd = comb op (args @ extra_args) in
           if extra_args = [] then cmd
           else
             let cmd = mk_cmd (Cmd_lambda (extra_args, cmd), f.app_term, Arg_function) in
-            mk_cmd (Cmd_pair (mk_ref_cmd f.app_term, cmd), f.app_term, Arg_function)
+            mk_cmd (Cmd_pair (mk_ref_cmd0 (f.app_term, Arg_term), cmd), f.app_term, Arg_function)
         | Const_app _ | Var_app _ ->
-          let arg_tms = f.fixed_args @ map get_eval_term f.applied_args in
-          let simple_app = forall (fun arg -> get_type env arg <> Arg_theorem) arg_tms in
-          let extra_args, env = 
-            if simple_app then [], env
-            else get_extra_args env f in
-          let args = map (fun tm ->
-            let target = if is_fun_ty (type_of tm) then Arg_function else Arg_term in
-            convert_ref env target tm) (arg_tms @ extra_args) in
-          let app_cmd = mk_cmd (Cmd_app (f.app_type, args), f.app_term, Arg_theorem) in
+          let simple_app = forall (fun (_, ty) -> ty <> Arg_theorem) args in
+          let extra_args = if simple_app then [] else extra_args in
+          let args = args @ extra_args in
+          let arg_cmds = map (fun (tm, ty) ->
+            let target = if ty = Arg_function then Arg_function else Arg_term in
+            convert_ref target (tm, ty)) args in
+          let app_cmd = mk_cmd (Cmd_app (f.app_type, arg_cmds), f.app_term, Arg_theorem) in
           let cmd =
             if simple_app then app_cmd
             else
               let op, _ = strip_comb_gabs f.app_term in
-              let c = comb env op arg_tms in
-              let t = mk_cmd (Cmd_trans (mk_ref_cmd f.app_term, c), f.app_term, Arg_theorem) in
+              let c = comb op args in
+              let t = mk_cmd (Cmd_trans (c, mk_ref_cmd app_cmd), f.app_term, Arg_theorem) in
               mk_cmd (Cmd_composite [app_cmd; t], f.app_term, Arg_theorem) in
           if f.extra_args = [] then cmd
           else
             let cmd = 
               if simple_app then cmd 
               else mk_cmd (Cmd_lambda (extra_args, cmd), f.app_term, Arg_function) in
-            mk_cmd (Cmd_pair (mk_ref_cmd f.app_term, cmd), f.app_term, Arg_function)
+            mk_cmd (Cmd_pair (mk_ref_cmd0 (f.app_term, Arg_term), cmd), f.app_term, Arg_function)
       in
       let r = get_cmd_rec cmd in
       (r.result, r.result_type) :: env, cmds @ [cmd]
@@ -200,31 +212,29 @@ let optimize_comb tm =
   let rec optimize_cmd (Cmd (t, r)) =
     let t' =
       match t with
-      | Cmd_ref _ -> t
+      | Cmd_ref -> t
       | Cmd_app (f, args) -> Cmd_app (f, map optimize_cmd args)
       | Cmd_lambda (tms, a) -> Cmd_lambda (tms, optimize_cmd a)
       | Cmd_pair (a1, a2) -> Cmd_pair (optimize_cmd a1, optimize_cmd a2)
       | Cmd_trans (a1, a2) -> Cmd_trans (optimize_cmd a1, optimize_cmd a2)
       | Cmd_comb_terms (a1, a2) -> Cmd_comb_terms (optimize_cmd a1, optimize_cmd a2)
-      | Cmd_convert (t1, t2, a) -> 
-        let a = optimize_cmd a in
-        Cmd_convert (t1, t2, a)
-        (* (match t1, t2 with
+      | Cmd_convert (target, ty, a) -> 
+        (match target, ty with
          | Arg_theorem, Arg_function when contains r.result ->
-           Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd r.result)
-         | _ -> Cmd_convert (t1, t2, optimize_cmd a)) *)
+           Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd0 (r.result, Arg_term))
+         | _ -> Cmd_convert (target, ty, optimize_cmd a))
       | Cmd_composite cmds -> Cmd_composite (map optimize_cmd cmds)
       | Cmd_comb (a1, a2) ->
         let a1 = optimize_cmd a1 in
         let a2 = optimize_cmd a2 in
         match a1, a2 with
-        | Cmd (Cmd_convert (Arg_theorem, ((Arg_term | Arg_function) as t1), c1), r1),
-          Cmd (Cmd_convert (Arg_theorem, ((Arg_term | Arg_function) as t2), c2), r2) ->
+        | Cmd (Cmd_convert (Arg_theorem, (Arg_term | Arg_function), c1), r1),
+          Cmd (Cmd_convert (Arg_theorem, (Arg_term | Arg_function), c2), r2) ->
           if contains r.result then
-            Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd r.result)
+            Cmd_convert (Arg_theorem, Arg_term, mk_ref_cmd0 (r.result, Arg_term))
           else
-            let cmd1 = Cmd (Cmd_convert (Arg_term, t1, c1), { r1 with result_type = Arg_term }) in
-            let cmd2 = Cmd (Cmd_convert (Arg_term, t2, c2), { r2 with result_type = Arg_term }) in
+            let cmd1 = mk_convert_cmd (Arg_term, c1) in
+            let cmd2 = mk_convert_cmd (Arg_term, c2) in
             let cmd = Cmd (Cmd_comb_terms (cmd1, cmd2), { r with result_type = Arg_term }) in
             Cmd_convert (Arg_theorem, Arg_term, cmd)
         | _ -> Cmd_comb (a1, a2) in
@@ -232,6 +242,7 @@ let optimize_comb tm =
   map optimize_cmd;;
 
 
+(* TODO: env may be static: only Arg_theorem and Arg_function can be added to it *)
 let rec pattern_cmd env (Cmd (t, r)) =
   let process_args env args =
     List.fold_left (fun tms cmd ->
@@ -239,7 +250,9 @@ let rec pattern_cmd env (Cmd (t, r)) =
       union tms tms') [] args
   in
   match t with
-  | Cmd_ref tm -> if mem tm env then [] else [tm]
+  | Cmd_ref ->
+    if r.result_type = Arg_term && not (mem (r.result, Arg_term) env) then [r.result] 
+    else []
   | Cmd_app (_, args) -> process_args env args
   | Cmd_lambda (tms, a1) -> process_args (tms @ env) [a1]
   | Cmd_pair (a1, a2) -> process_args env [a1; a2]
@@ -253,13 +266,13 @@ and pattern_cmds env = function
   | [] -> env, []
   | cmd :: cmds ->
     let tms1 = pattern_cmd env cmd in
-    let env = cmd_result cmd :: env in
+    let env = (cmd_result cmd, cmd_type cmd) :: env in
     let env, tms2 = pattern_cmds env cmds in
     env, union tms1 tms2;;
 
 
 type env_rec = {
-  names: (term * string) list;
+  names: ((term * eval_arg_type) * string) list;
   index: int;
 };;
 
@@ -269,12 +282,12 @@ let rec name_variant names name =
   if mem name names then name_variant names (name ^ "'")
   else name;;
 
-let get_name env tm =
-  try assoc tm env.names
+let get_name env (tm, ty) =
+  try assoc (tm, ty) env.names
   with Failure _ ->
     Format.sprintf "arg`%s`" (string_of_term tm);;
 
-let extend_env env tm =
+let extend_env env (tm, ty) =
   let rec check_name name =
     if can (rev_assoc name) env.names then
       check_name (name ^ "'")
@@ -282,7 +295,7 @@ let extend_env env tm =
       name in
   let i = env.index + 1 in
   let name = check_name (Format.sprintf "r%d" i) in {
-    names = (tm, name) :: env.names;
+    names = ((tm, ty), name) :: env.names;
     index = i;
   }, name;;
 
@@ -291,7 +304,7 @@ let rec cmds_to_exprs env = function
   | [] -> env, []
   | cmd :: cmds ->
     let expr = cmd_expr env cmd in
-    let env, name = extend_env env (cmd_result cmd) in
+    let env, name = extend_env env (cmd_result cmd, cmd_type cmd) in
     let env, exprs = cmds_to_exprs env cmds in
     if exprs = [] then env, [expr]
     else
@@ -299,11 +312,11 @@ let rec cmds_to_exprs env = function
 
 and cmd_expr env (Cmd (t, r)) =
   match t with
-  | Cmd_ref tm -> Raw (get_name env tm)
+  | Cmd_ref -> Raw (get_name env (r.result, r.result_type))
   | Cmd_app (app, args) ->
     let f_name =
       match app with
-      | Var_app tm -> string_of_term tm
+      | Var_app tm -> "func_" ^ get_name env (tm, Arg_term)
       | Const_app rule -> rule.f_name
       | _ -> failwith "cmd_exp: Cmd_app" in
     mk_app (mk_raw f_name, map (cmd_expr env) args)
@@ -338,10 +351,10 @@ and cmd_expr env (Cmd (t, r)) =
     let _, exprs = cmds_to_exprs env cmds in
     chain_let exprs;;
 
-
-let compile_tm tm =
+(* TODO: add (f, func_f) as fun_f to the env for get_eval_commands *)
+let compile_tm db tm =
   let vars = frees tm in
-  let args = zip vars (map (fst o dest_var) vars) in
+  let args = map (fun tm -> (tm, Arg_term), fst (dest_var tm)) vars in
   let tm_name = "tm" in
   let tree = build_eval_tree db tm |> optimize_eval_tree in
   let _, cmds = get_eval_commands [] tree in
@@ -351,8 +364,9 @@ let compile_tm tm =
     let names = map snd args in
     let arg_names = enum_names "a" (length p_tms) in
     zip p_tms (map (name_variant names) arg_names) in
+  let p_args = map (fun (tm, name) -> (tm, Arg_term), name) p_names in
   let pat, _ = get_pattern tm p_tms in
-  let _, exprs = cmds_to_exprs { empty_env with names = p_names @ args } cmds in
+  let _, exprs = cmds_to_exprs { empty_env with names = p_args @ args } cmds in
   let expr =
     let body = chain_let exprs in
     if pat = Punused then body
