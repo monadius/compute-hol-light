@@ -1,7 +1,114 @@
+needs "eval_database.hl";;
+needs "eval_expr.hl";;
+
+let rec split_while p = function
+  | [] -> [], []
+  | (x :: xs) as l -> 
+    if p x then
+      let a, b = split_while p xs in
+      x :: a, b
+    else
+      [], l;;
+
+type eval_arg_type = Arg_term | Arg_theorem | Arg_function;;
+
+type app_type = 
+    Basic_app of term 
+  | Const_app of db_rec 
+  | Var_app of term
+  | Abs_app of term * eval_tree
+
+and func_app_rec = {
+  app_term: term;
+  app_type: app_type;
+  applied_args: eval_tree list;
+  extra_args: eval_arg_type list;
+  (* Arguments for free variables inside abstractions *)
+  fixed_args: term list;
+}
+
+and eval_tree =
+    Refl of term
+  | Func_app of func_app_rec;;
+
+let get_eval_type = function
+  | Refl _ -> Arg_term
+  | Func_app {extra_args = []} -> Arg_theorem
+  | Func_app {extra_args = _ :: _} -> Arg_function;;
+
+let get_eval_term = function
+  | Refl tm -> tm
+  | Func_app { app_term = tm } -> tm;;
+
+let is_eval_tree_refl = function
+  | Refl _ -> true
+  | _ -> false;;
+
+let is_basic_app = function
+  | Func_app {app_type = Basic_app _} -> true
+  | _ -> false;;
+
+let build_eval_tree db =
+  let rec mk_app tm head args =
+    let app_type =
+      match head with
+      | _ when is_gabs head -> 
+        let _, body = strip_gabs head in
+        Abs_app (head, build body)
+      | Var _ -> Var_app head
+      | Const (name, _) -> begin
+          if has_entries db name then
+            Const_app (find_most_specific_entry db head)
+          else
+            Basic_app head
+        end
+      | _ -> invalid_arg "mk_app: head should be a variable, a constant, or an abstraction" in
+    match get_type head with
+    | Tfun (l, _) ->
+      let _, extra = chop_list (List.length args) l in
+      let tys = List.map (function Tfun _ -> Arg_function | Ttype _ -> Arg_term) extra in
+      Func_app {
+        app_term = tm; 
+        app_type = app_type; 
+        applied_args = args; 
+        extra_args = tys; 
+        fixed_args = []
+      }
+    | _ -> invalid_arg "mk_app: head should be a function"
+  and build tm =
+    match tm with
+    | Comb _ ->
+      let op, args = strip_comb_gabs tm in
+      let arg_trees = List.map build args in
+      mk_app tm op arg_trees
+    | _ -> (try mk_app tm tm [] with Invalid_argument _ -> Refl tm)
+  in
+  build;;
+
+let optimize_eval_tree =
+  let split_args head args =
+    let refls, rest = split_while is_eval_tree_refl args in
+    let head' = List.fold_left (curry mk_comb) head 
+                  (List.map get_eval_term refls) in
+    head', rest in
+  let rec optimize = function
+    | Refl _ as t -> t
+    | Func_app ({app_type = Basic_app head; applied_args = args} as app) ->
+      let head', args' = split_args head (List.map optimize args) in
+      if args' = [] && app.extra_args = [] && app.fixed_args = [] then
+        Refl head'
+      else
+        Func_app {app with app_type = Basic_app head'; applied_args = args'}
+    | Func_app ({app_type = t; applied_args = args} as app) ->
+      let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
+      Func_app {app with app_type = t'; applied_args = List.map optimize args} in
+  optimize;;
+
+
 type pat = 
   | Punused
   | Pvar of term
-  (* lhs, rhs, optional as clause *)
+  (* lhs, rhs, optional "as" clause *)
   | Pcomb of pat * pat * term option
   | Pabs of pat * term option;;
 
@@ -122,17 +229,6 @@ let cmd_result (Cmd (_, {result = r})) = r;;
 
 
 let get_eval_commands =
-  (* let get_type env tm =
-    try assoc tm env
-    with Failure _ -> 
-      if is_var tm && is_fun_ty (type_of tm) then Arg_function else Arg_term 
-  in *)
-  (* let convert_cmd target cmd =
-    let ty = get_type env tm in
-    if ty = target then cmd
-    else
-      mk_convert_cmd (target, ty, cmd)
-  in *)
   let convert_ref target (tm, ty) =
     let rf = mk_ref_cmd0 (tm, ty) in
     if ty = target then rf
@@ -242,7 +338,7 @@ let optimize_comb tm =
   map optimize_cmd;;
 
 
-(* TODO: env may be static: only Arg_theorem and Arg_function can be added to it *)
+(* TODO: env is static: only Arg_theorem and Arg_function can be added to it *)
 let rec pattern_cmd env (Cmd (t, r)) =
   let process_args env args =
     List.fold_left (fun tms cmd ->
