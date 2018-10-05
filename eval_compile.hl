@@ -1,6 +1,7 @@
 needs "eval_compile_tree.hl";;
 
 let generate_eval_errors = ref true;;
+let compile_new = ref false;;
 
 let rec count_free_subterms stm tm =
   if tm = stm then 1
@@ -12,8 +13,6 @@ let rec count_free_subterms stm tm =
     | Abs (v, btm) ->
       if v = stm then 0
       else count_free_subterms stm btm;;
-
-let is_fun_ty = can dest_fun_ty;;
 
 let extract_abs (name_index, init_abs) (base_tm, base_name) eval_tree =
   let index = ref name_index in
@@ -56,13 +55,6 @@ let rec extract_cond_types eval_tree =
   | Func_app { applied_args = args } ->
     itlist union (map extract_cond_types args) []
   | Refl _ -> [];;
-
-
-type compile_env = {
-  cond_names: (hol_type * string) list;
-  (* name + global flag (for variables) *)
-  tm_names: (term * (string * bool)) list;
-};;
 
 
 let compile_eval_tree env =
@@ -288,7 +280,11 @@ let compile_rhs env ty_inst case =
   if is_eval_tree_refl case.rhs then
     chain_let (var_exprs @ [inst_expr])
   else
-    let expr = compile_eval_tree env "rhs" case.rhs in
+    let expr = 
+      if !compile_new then
+        compile_eval_tree_new env "rhs" (case.rhs_tm, case.rhs)
+      else
+        compile_eval_tree env "rhs" case.rhs in
     chain_let (var_exprs @ [
       mk_let ("th", inst_expr);
       mk_let ("rhs", Raw "rand (concl th)");
@@ -302,7 +298,11 @@ let compile_function env func =
   let compile_case ty_inst case =
     let vars = case.vars in
     let rec compile_pat = function
-      | Pvar i, Tfun (args, _) -> mk_tuple [Raw (var_name vars i); Raw ("func_" ^ var_name vars i)]
+      | Pvar i, Tfun (args, _) ->
+        let name = var_name vars i in
+        (* TODO: fun_f yields unused argument warnings: use tm arguments directly *)
+        (* Raw (Format.sprintf "((%s, func_%s) as fun_%s)" name name name) *)
+        Raw (Format.sprintf "(%s, func_%s)" name name)
       | Pvar i, _ -> Raw (var_name vars i)
       | Papp _, Tfun _ -> failwith "Patterns are not allowed for functions"
       | Papp (c, ps), ty ->
@@ -729,7 +729,11 @@ let compile_term db f_name tm =
     compile_function env abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
   let cond_th_exprs = get_cond_th_exprs env.cond_names in
-  let expr = compile_eval_tree env "tm" eval_tree in
+  let expr = 
+    if !compile_new then
+      compile_eval_tree_new env "tm" (tm, eval_tree)
+    else
+      compile_eval_tree env "tm" eval_tree in
   mk_let (f_name,
     chain_let (tm_expr :: abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 

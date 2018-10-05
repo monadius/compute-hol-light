@@ -10,6 +10,9 @@ let rec split_while p = function
     else
       [], l;;
 
+let is_fun_ty = can dest_fun_ty;;
+
+
 type eval_arg_type = Arg_term | Arg_theorem | Arg_function;;
 
 type app_type = 
@@ -107,7 +110,7 @@ let optimize_eval_tree =
 
 type pat = 
   | Punused
-  | Pvar of term
+  | Pv of term
   (* lhs, rhs, optional "as" clause *)
   | Pcomb of pat * pat * term option
   | Pabs of pat * term option;;
@@ -120,7 +123,7 @@ let string_of_pat names =
     | None -> sprintf "%s (%s, %s)" t (str p1) (str p2)
   and str = function
   | Punused -> "_"
-  | Pvar tm -> name tm
+  | Pv tm -> name tm
   | Pcomb (p1, p2, p_as) -> comb_str "Comb" p1 p2 p_as
   | Pabs (p, p_as) -> comb_str "Abs" Punused p p_as
   in
@@ -138,23 +141,23 @@ let get_pattern =
   in
   let rec simplify pat =
     match pat with
-    | Pvar _ | Punused -> pat
+    | Pv _ | Punused -> pat
     | Pabs (p, p_as) ->
       let p' = simplify p in
       (match p', p_as with
        | Punused, None -> Punused
-       | Punused, Some tm -> Pvar tm
+       | Punused, Some tm -> Pv tm
        | _ -> Pabs (p', p_as))
     | Pcomb (p1, p2, p_as) ->
       let p1 = simplify p1 in
       let p2 = simplify p2 in
       match p1, p2, p_as with
       | Punused, Punused, None -> Punused
-      | Punused, Punused, Some tm -> Pvar tm
+      | Punused, Punused, Some tm -> Pv tm
       | _ -> Pcomb (p1, p2, p_as)
   in
   let rec complexity = function
-    | Punused | Pvar _ -> 0
+    | Punused | Pv _ -> 0
     | Pabs (p, _) -> complexity p + 1
     | Pcomb (p1, p2, _) -> complexity p1 + complexity p2 + 1
   in
@@ -162,7 +165,7 @@ let get_pattern =
     match tm with
     | _ when tms = [] -> Punused, []
     | Var _ | Const _ ->
-      if mem tm tms then Pvar tm, subtract tms [tm]
+      if mem tm tms then Pv tm, subtract tms [tm]
       else Punused, tms
     | Abs (var, btm) ->
       let p_as, tms =
@@ -447,21 +450,30 @@ and cmd_expr env (Cmd (t, r)) =
     let _, exprs = cmds_to_exprs env cmds in
     chain_let exprs;;
 
-(* TODO: add (f, func_f) as fun_f to the env for get_eval_commands *)
-let compile_tm db tm =
-  let vars = frees tm in
-  let args = map (fun tm -> (tm, Arg_term), fst (dest_var tm)) vars in
-  let tm_name = "tm" in
-  let tree = build_eval_tree db tm |> optimize_eval_tree in
-  let _, cmds = get_eval_commands [] tree in
-  let cmds = optimize_comb tm cmds in
+
+type compile_env = {
+  cond_names: (hol_type * string) list;
+  (* name + global flag (for variables) *)
+  tm_names: (term * (string * bool)) list;
+};;
+
+let compile_eval_tree_new compile_env tm_name (base_tm, tree) =
+  let args' = map (fun (tm, (name, _)) -> (tm, Arg_term), name) compile_env.tm_names in
+  (* TODO: use tm arguments here instead of fun_f *)
+  (* let args_f = compile_env.tm_names
+    |> filter (fun (tm, _) -> is_fun_ty (type_of tm))
+    |> map (fun (tm, (name, _)) -> (tm, Arg_function), "fun_" ^ name) in
+  let args = args' @ args_f in *)
+  let args = args' in
+  let _, cmds = get_eval_commands (map fst args) tree in
+  let cmds = optimize_comb base_tm cmds in
   let _, p_tms = pattern_cmds (map fst args) cmds in
   let p_names =
     let names = map snd args in
     let arg_names = enum_names "a" (length p_tms) in
     zip p_tms (map (name_variant names) arg_names) in
   let p_args = map (fun (tm, name) -> (tm, Arg_term), name) p_names in
-  let pat, _ = get_pattern tm p_tms in
+  let pat, _ = get_pattern base_tm p_tms in
   let _, exprs = cmds_to_exprs { empty_env with names = p_args @ args } cmds in
   let expr =
     let body = chain_let exprs in
@@ -470,4 +482,4 @@ let compile_tm db tm =
       Match (Raw tm_name, 
         [Raw (string_of_pat p_names pat), body;
          Raw "_", Raw "failwith \"bad pattern\""]) in
-  Format.fprintf Format.std_formatter "@.@[<v>%a@]@.@." print_expr expr;;
+  expr;;
