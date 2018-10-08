@@ -132,7 +132,7 @@ let compile_eval_tree env =
       mk_let ("else_eq", else_expr);
       Raw "TRANS (TRANS th0 th1) else_eq"
     ] in
-    let cond_test = Raw "rand (concl cond_eq) = true_tm" in
+    let cond_test = Raw "is_true_th cond_eq" in
     let if_expr = If (cond_test, then_branch, else_branch) in
     chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"]
       @ (if var_exprs = [] then [] else type_expr :: var_exprs)
@@ -140,7 +140,7 @@ let compile_eval_tree env =
   in
   let compile_and name expr1 expr2 =
     let a1_eq = mk_let ("a1_eq", expr1) in
-    let cond_test = Raw "rand (concl a1_eq) = true_tm" in
+    let cond_test = Raw "is_true_th a1_eq" in
     let then_branch = chain_let [
       mk_let ("a2_eq", expr2);
       mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
@@ -155,7 +155,7 @@ let compile_eval_tree env =
   in
   let compile_or name expr1 expr2 =
     let a1_eq = mk_let ("a1_eq", expr1) in
-    let cond_test = Raw "rand (concl a1_eq) = true_tm" in
+    let cond_test = Raw "is_true_th a1_eq" in
     let then_branch = chain_let [
       mk_let ("or_th", Raw "INST[a2, p_var_bool] T_OR");
       Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) or_th"
@@ -771,7 +771,11 @@ let derived_thm_expr derived =
 
 let print_global_defs fmt () =
   Format.pp_print_string fmt
-"let true_tm = standardize_tm `T`;;
+"let is_true_th th =
+  match concl th with
+  | Comb (_, Const (\"T\", _)) -> true
+  | _ -> false;;
+
 let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]) and
     COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
 
