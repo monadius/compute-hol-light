@@ -282,12 +282,13 @@ let compile_rhs env ty_inst case =
   else
     let expr = 
       if !compile_new then
-        compile_eval_tree_new env "rhs" (case.rhs_tm, case.rhs)
+        let lhs_tm = mk_var ("$tmp", type_of case.rhs_tm) in
+        let rhs_tm = mk_eq (lhs_tm, case.rhs_tm) in
+        compile_eval_tree_new env "concl th" (rhs_tm, case.rhs)
       else
-        compile_eval_tree env "rhs" case.rhs in
+        compile_eval_tree env "(rand (concl th))" case.rhs in
     chain_let (var_exprs @ [
       mk_let ("th", inst_expr);
-      mk_let ("rhs", Raw "rand (concl th)");
       mk_let ("rhs_eq", expr);
       mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
     ]);;
