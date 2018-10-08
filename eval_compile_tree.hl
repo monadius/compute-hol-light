@@ -427,10 +427,12 @@ let rec name_variant names name =
   if mem name names then name_variant names (name ^ "'")
   else name;;
 
-let get_name env (tm, ty) =
+let get_name env ?default (tm, ty) =
   try assoc (tm, ty) env.names
   with Failure _ ->
-    Format.sprintf "arg`%s`" (string_of_term tm);;
+    match default with
+    | Some name -> name
+    | _ -> Format.sprintf "arg`%s`" (string_of_term tm);;
 
 let extend_env env (tm, ty) =
   let rec check_name name =
@@ -469,7 +471,7 @@ and cmd_cond env cond =
   let t_var_name, e_var_name, var_exprs =
     let create_var base_name ty_expr =
       let tm = mk_var (base_name, cond_ty) in
-      let name = get_name env (tm, Arg_term) in
+      let name = get_name env (tm, Arg_term) ~default:base_name in
       let vname = "var_" ^ name in
       if mem tm env.global_vars then
         vname, []
