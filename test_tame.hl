@@ -193,14 +193,15 @@ set_extra_for_consts db (Extra_memo Hashtbl_memo) [
   (* `excessNotAtRec`; *)
 ];;
 
+compile_new := true;;
 let () =
   set_extra_for_all db (Extra_counter 0);
   set_extra_for_names db (Extra_counter 100) ["worklist_tree_bounded"];
   (* set_rule db `(=):A->A->bool`; *)
   (* set_extra_for_all db Extra_arg_list; *)
   (* write_rules_names db "out.hl" const_names *)
-  write_rules_consts db "out.hl" consts;;
-loadt "out.hl";;
+  write_rules_consts db "out_2.hl" consts;;
+loadt "out_2.hl";;
 
 (* 40.714s *)
 (* original: 0.0171s *)
@@ -224,6 +225,7 @@ loadt "out.hl";;
 (* 3.246s with Weak_memo *)
 (* 2.649s with Hashtbl_memo *)
 (* 2.688s with Assoc_memo *)
+(* 2.481s with eval_compile_tree *)
 (* reset_core_counters() *)
 let () = ();;
 let () =
