@@ -297,7 +297,7 @@ let get_eval_commands =
         cond_cmd = convert_ref Arg_theorem cond_tt;
         then_cmds = then_cmds;
         else_cmds = else_cmds;
-        cond_th_cmd = comb op [cond_tt; then_tm, Arg_term; else_tm, Arg_term];
+        cond_th_cmd = comb op [cond_tt];
         then_tm = then_tm;
         else_tm = else_tm;
       } in
@@ -510,6 +510,7 @@ and cmd_cond env cond =
   let cond_expr = cmd_expr env cond.cond_cmd in
   let _, then_exprs = cmds_to_exprs env cond.then_cmds in
   let _, else_exprs = cmds_to_exprs env cond.else_cmds in
+  let base_comb = cmd_expr env cond.cond_th_cmd in
   let then_name = get_name env (cond.then_tm, Arg_term) in
   let else_name = get_name env (cond.else_tm, Arg_term) in
 
@@ -530,44 +531,57 @@ and cmd_cond env cond =
     let e_var, e_var_exprs = create_var "e" ty_expr in
     t_var, e_var, t_var_exprs @ e_var_exprs in
 
-  let inst_true, inst_false =
-    let th_name = assocd cond_ty env.cond_names "COND" in
-    let inst_list = Format.sprintf "[%s, %s; %s, %s]" 
-      then_name t_var_name else_name e_var_name in
-    let inst_vars = App (Raw "INST", Raw inst_list) in
-    let inst_expr th =
-      if th_name <> "COND" then 
-        App (inst_vars, Raw th)
-      else
-        App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; Raw th])) in
-    inst_expr (th_name ^ "_T"), inst_expr (th_name ^ "_F") in
+  let mk_raw_refl name = App (Raw "REFL", Raw name) in
 
-  let cond_th_expr = mk_let ("th0", cmd_expr env cond.cond_th_cmd) in
+  let inst suffix t e =
+    let th_name = assocd cond_ty env.cond_names "COND" in
+    let th_expr = Raw (th_name ^ suffix) in
+    let inst_vars = App (Raw "INST", mk_list_expr [
+      mk_tuple [t; Raw t_var_name];
+      mk_tuple [e; Raw e_var_name];
+    ]) in
+    if th_name <> "COND" then
+      App (inst_vars, th_expr)
+    else
+      App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; th_expr])) in
+
   let then_branch = chain_let @@
     if then_exprs = [] then [
-      mk_let ("th1", inst_true);
+      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [ 
+                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
+                      mk_raw_refl else_name]));
+      mk_let ("th1", inst "_T" (Raw then_name) (Raw else_name));
       Raw "TRANS th0 th1"
     ]
     else [
-      mk_let ("th1", inst_true);
       mk_let ("then_eq", chain_let then_exprs);
-      Raw "TRANS (TRANS th0 th1) then_eq"
+      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [
+                      App (Raw "MK_COMB", mk_tuple [base_comb; Raw "then_eq"]);
+                      mk_raw_refl else_name]));
+      mk_let ("th1", inst "_T" (Raw "rand (concl then_eq)") (Raw else_name));
+      Raw "TRANS th0 th1"
     ] in
   let else_branch = chain_let @@
     if else_exprs = [] then [
-      mk_let ("th1", inst_false);
+      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [ 
+                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
+                      mk_raw_refl else_name]));
+      mk_let ("th1", inst "_F" (Raw then_name) (Raw else_name));
       Raw "TRANS th0 th1"
     ]
     else [
-      mk_let ("th1", inst_false);
       mk_let ("else_eq", chain_let else_exprs);
-      Raw "TRANS (TRANS th0 th1) else_eq"
+      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [
+                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
+                      Raw "else_eq"]));
+      mk_let ("th1", inst "_F" (Raw then_name) (Raw "rand (concl else_eq)"));
+      Raw "TRANS th0 th1"
     ] in
   let cond_test = App (Raw "is_true_th", cond_expr) in
   let if_expr = If (cond_test, then_branch, else_branch) in
   chain_let @@
     (if var_exprs = [] then [] else type_expr :: var_exprs)
-    @ [cond_th_expr; if_expr]
+    @ [if_expr]
 
 and cmd_conj env cond =
   let a1_expr = cmd_expr env cond.cond_cmd in
