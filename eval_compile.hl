@@ -363,6 +363,7 @@ let compile_function env func =
       match memo with
       | Hashtbl_memo -> "Hashtbl.find", "Hashtbl.add"
       | Assoc_memo _ -> "Assoc.find", "Assoc.add"
+      | Assoc_lru _ -> "Assoc_lru.find", "Assoc_lru.add"
       | Weak_memo -> "Memo_hash.find", "Memo_hash.add" in
     (* TODO: precise memos *)
     let key_expr = mk_let ("key", 
@@ -427,6 +428,8 @@ let compile_rules db rules =
           match t with
           | Hashtbl_memo -> "create_memo"
           | Assoc_memo size -> Format.sprintf "create_assoc_memo %d" size
+          | Assoc_lru (size, list_size) ->
+            Format.sprintf "create_lru_memo %d ~list_size:%d" size list_size
           | Weak_memo -> "create_weak_memo" in
         let e = mk_let (Format.sprintf "memo_%s" f.name,
                         App (Raw create, String f.name)) in

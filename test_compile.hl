@@ -596,6 +596,7 @@ let memo = Hashtbl.create 10000;;
 let weak_memo = Memo_hash.create 10000;;
 let memo2 = Hashtbl.create 10000;;
 let assoc_memo = Assoc.create 10000;;
+let lru_memo = Assoc_lru.create 10000;;
 
 
 let replace2 key v =
@@ -629,6 +630,7 @@ Hashtbl.clear memo;;
 Hashtbl.clear memo2;;
 Memo_hash.clear weak_memo;;
 Assoc.clear assoc_memo;;
+Assoc_lru.clear lru_memo;;
 
 (* 1.302 *)
 test 3000 (test_memo 200 (fun _ -> raise Not_found) (fun _ _ -> ())) ();;
@@ -642,6 +644,8 @@ test 30000 (test_memo 200 (Memo_hash.find weak_memo) (Memo_hash.replace weak_mem
 test 3000 (test_memo 200 find2 add2) ();;
 (* 0.105 *)
 test 3000 (test_memo 200 (Assoc.find assoc_memo) (Assoc.add assoc_memo)) ();;
+(* 0.107 *)
+test 3000 (test_memo 200 (Assoc_lru.find lru_memo) (Assoc_lru.add lru_memo)) ();;
 assoc_memo;;
 
 replace2 "x" TRUTH;;
@@ -678,3 +682,4 @@ done; !s;;
 Weak.get wa 1000;;
 
 Gc.compact();;
+

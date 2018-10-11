@@ -130,6 +130,55 @@ module Assoc = struct
     find_aux h.attempts i
 end;;
 
+module Assoc_lru = struct
+  type 'a t = {
+    data : 'a list array;
+    size : int;
+    list_size : int
+  }
+
+  let rec next_pow2 x n =
+    if x >= n || x * 2 > Sys.max_array_length then x
+    else next_pow2 (2 * x) n
+
+  let create ?(list_size = 5) n = 
+    let size = next_pow2 16 n in {
+      data = Array.make size [];
+      size = size;
+      list_size = list_size;
+    }
+
+  let clear h = Array.fill h.data 0 h.size []
+
+  let index h key = Hashtbl.hash key land (h.size - 1)
+
+  let add h key v =
+    let rec trim n lst =
+      match lst with
+      | [] -> lst
+      | x :: xs ->
+        if n <= 0 then []
+        else
+          let ys = trim (n - 1) xs in
+          if ys == xs then lst
+          else
+            x :: ys in
+      let i = index h key in
+      h.data.(i) <- trim h.list_size ((key, v) :: h.data.(i))
+
+  let find h key =
+    let rec find_aux acc = function
+    | [] -> raise Not_found
+    | ((k, v) as x) :: xs ->
+      if k = key then
+        v, x :: List.rev_append acc xs
+      else
+        find_aux (x :: acc) xs in
+    let i = index h key in
+    let v, lst = find_aux [] h.data.(i) in
+    h.data.(i) <- lst; v
+end;;
+
 let create_assoc_memo, clear_assoc_memos, get_assoc_memos =
   let memos = Hashtbl.create 100 in
   let create size (name: string) =
@@ -140,6 +189,20 @@ let create_assoc_memo, clear_assoc_memos, get_assoc_memos =
       memo in
   let clear_all () =
     Hashtbl.iter (fun _ m -> Assoc.clear m) memos in
+  let get_all () =
+    Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
+  create, clear_all, get_all;;
+
+let create_lru_memo, clear_lru_memos, get_lru_memos =
+  let memos = Hashtbl.create 100 in
+  let create size ?list_size (name: string) =
+    try Hashtbl.find memos name
+    with Not_found ->
+      let memo: (string list * thm) Assoc_lru.t = Assoc_lru.create ?list_size size in
+      Hashtbl.add memos name memo;
+      memo in
+  let clear_all () =
+    Hashtbl.iter (fun _ m -> Assoc_lru.clear m) memos in
   let get_all () =
     Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
   create, clear_all, get_all;;

@@ -84,8 +84,8 @@ let rules = [
   "excessTCount_DEF", excessTCount_DEF, [];
   "squanderTarget_DEF", squanderTarget_DEF, [];
   "squanderFace_ALT", squanderFace_ALT, [];
-  "squanderVertex_ALT2", squanderVertex_ALT2, [];
-  "maxGon_DEF", maxGon_DEF, [];
+  "squanderVertex_ALT", squanderVertex_ALT, [];
+  "maxGon_ALT", maxGon_ALT, [];
   "seed_DEF", seed_DEF, [];
   "duplicateEdge_DEF", duplicateEdge_DEF, [];
   "containsUnacceptableEdgeSnd_ALT", containsUnacceptableEdgeSnd_ALT, [];
@@ -162,16 +162,14 @@ let db = add_thms (tame_default_db ~eliminate_abs:true ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
 (* let consts = dependencies db `tameEnumFilterBounded` ~inst_types:false *)
 (* set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [ *)
+(* set_extra_for_consts db (Extra_memo (Assoc_lru (10000, 2))) [ *)
 set_extra_for_consts db (Extra_memo Hashtbl_memo) [
-    (* `bool_to_num`; *)
-  `squanderFace`;
-  `maxGon`;
+  (* `bool_to_num`; *)
   (* `fst:num#num->num`; *)
   (* `is_none:(num#num)option->bool`; *)
   (* `final_face`; *)
   `size_list:(num)list->num`;
   `excessAtType`;
-  `squanderVertex`;
   `vertices_face`;
   `heightsNewVertices`;
   `upt`;
@@ -188,7 +186,9 @@ set_extra_for_consts db (Extra_memo Hashtbl_memo) [
   `map:(num->(num)list)->(num)list->((num)list)list`;
   `map:((num)list->(num)list)->((num)list)list->((num)list)list`;
   (* `filter:(num#num->bool)->(num#num)list->(num#num)list`; *)
-  `removeKeyList:(num)list->(num#num)list->(num#num)list`;
+
+  (* `removeKeyList:(num)list->(num#num)list->(num#num)list`; *)
+
   (* `nth:((face)list)list->num->(face)list`; *)
   (* `excessNotAtRec`; *)
 ];;
@@ -233,14 +233,63 @@ let () =
   clear_arg_lists();
   clear_all_memos();
   clear_weak_memos();
+  clear_lru_memos();
   clear_assoc_memos();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 
 (* 397s with Weak_memo *)
 (* 255s with Hashtbl_memo *)
 (* 262s with Assoc_memo *)
+(* 263s with Assoc_lru 10000, 2 *)
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `10000`);;
 test 1 (f_tameEnumFilterBounded `0`) `100`;;
+
+(* 518s with Hashtbl_memo *)
+(* 517s without memo for removeKeyList *)
+(* 530s with Assoc_memo *)
+(* 594s with Assoc_lru 10000, 5*)
+(* 597s with Assoc_lru 10000, 2*)
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `20000`);;
+
+(* After 241000 steps *)
+(* 31106 *)
+Hashtbl.length (create_memo "f_APPEND_num");;
+(* 12 *)
+Hashtbl.length (create_memo "f_map_num_num_list");;
+(* 138 *)
+Hashtbl.length (create_memo "f_upt");;
+(* 23 *)
+Hashtbl.length (create_memo "f_map_num_list_num_list");;
+(* 15 *)
+Hashtbl.length (create_memo "f_heightsNewVertices");;
+(* 2518 *)
+Hashtbl.length (create_memo "f_size_list_num");;
+(* 9303 *)
+Hashtbl.length (create_memo "f_nextVertex");;
+(* 4108 *)
+Hashtbl.length (create_memo "f_vertices_face");;
+(* 3263591 *)
+Hashtbl.length (create_memo "f_removeKeyList_num_num");;
+(* 5 *)
+Hashtbl.length (create_memo "f_squanderVertex");;
+(* 5 *)
+Hashtbl.length (create_memo "f_excessAtType");;
+(* 52 *)
+Hashtbl.length (create_memo "f_rev_num");;
+(* 164240 *)
+Hashtbl.length (create_memo "f_member_num");;
+(* 32459 *)
+Hashtbl.length (create_memo "f_splitAtRec_num");;
+(* 1 *)
+Hashtbl.length (create_memo "f_squanderFace");;
+
+Hashtbl.length (create_memo "f_maxGon");;
+
+let get_thms name =
+  let m = create_memo name in
+  Hashtbl.fold (fun k v r -> v :: r) m [];;
+
+get_thms "f_maxGon";;
 
 (* New orda improves performance *)
 (* type_of 5566376 *)
@@ -393,3 +442,5 @@ let () =
   set_rule db `(=):A->A->bool`;
   write_rules_names db "out.hl" const_names;;
 loadt "out.hl";;
+
+
