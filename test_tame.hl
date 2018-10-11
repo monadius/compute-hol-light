@@ -161,9 +161,9 @@ let rules = [
 let db = add_thms (tame_default_db ~eliminate_abs:true ()) rules;;
 let consts = dependencies db `tameEnumFilterBounded`;;
 (* let consts = dependencies db `tameEnumFilterBounded` ~inst_types:false *)
-(* set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [ *)
+set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [
 (* set_extra_for_consts db (Extra_memo (Assoc_lru (10000, 2))) [ *)
-set_extra_for_consts db (Extra_memo Hashtbl_memo) [
+(* set_extra_for_consts db (Extra_memo Hashtbl_memo) [ *)
   (* `bool_to_num`; *)
   (* `fst:num#num->num`; *)
   (* `is_none:(num#num)option->bool`; *)

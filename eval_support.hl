@@ -107,7 +107,7 @@ module Assoc = struct
 
   let next_index h i = (i * 17 + 1) land (h.size - 1)
 
-  let add h key v =
+  (* let add h key v =
     let rec add_aux n i =
       match h.data.(i) with
       | _ when n <= 0 -> h.data.(i) <- Some (key, v)
@@ -116,7 +116,20 @@ module Assoc = struct
         if k = key then h.data.(i) <- Some (key, v)
         else add_aux (n - 1) (next_index h i) in
     let i = index h key in
-    add_aux h.attempts i
+    add_aux h.attempts i *)
+
+  let add h key v =
+    let rec add_aux n i =
+      match h.data.(i) with
+      | _ when n < 0 -> false
+      | None -> h.data.(i) <- Some (key, v); true
+      | Some (k, _) ->
+        if k = key then (h.data.(i) <- Some (key, v); true)
+        else add_aux (n - 1) (next_index h i) in
+    let i = index h key in
+    if add_aux h.attempts i then ()
+    else
+      h.data.(i) <- Some (key, v)
 
   let find h key =
     let rec find_aux n i =
