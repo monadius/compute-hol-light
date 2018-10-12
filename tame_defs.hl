@@ -1405,3 +1405,11 @@ let tameEnumFilterBounded_DEF = define
         [seed p]
         (Tries [] [])`;;
 
+let tameCountFinalsBounded_DEF = define
+  `tameCountFinalsBounded p n =
+      worklist_tree_bounded n
+      (next_tame p)
+      (\g s. if final_graph g then SUC s else s)
+      [seed p]
+      0`;;
+

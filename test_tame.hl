@@ -156,6 +156,7 @@ let rules = [
 
   "worklist_tree_bounded_ALT", worklist_tree_bounded_ALT, [];
   "tameEnumFilterBounded_DEF", tameEnumFilterBounded_DEF, [];
+  "tameCountFinalsBounded_DEF", tameCountFinalsBounded_DEF, [];
 ];;
 
 let db = add_thms (tame_default_db ~eliminate_abs:true ()) rules;;
@@ -249,7 +250,100 @@ test 1 (f_tameEnumFilterBounded `0`) `100`;;
 (* 530s with Assoc_memo *)
 (* 594s with Assoc_lru 10000, 5*)
 (* 597s with Assoc_lru 10000, 2*)
+(* 478s with tail rec main loop with Assoc *)
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `20000`);;
+
+let f_worklist_tree_bounded_graph_num_num_list_list_tries =
+  let worklist_tree_bounded_ALT_case1, worklist_tree_bounded_ALT_case2 =
+    match map standardize (inst_type_thms `:num->(graph->(graph)list)->(graph->(num,((num)list)list)tries->(num,((num)list)list)tries)->(graph)list->(num,((num)list)list)tries->(num,((num)list)list)tries` (local_split_thm worklist_tree_bounded_ALT)) with
+    | [th1; th2] -> (th1, th2)
+    | _ -> failwith "error"
+     in
+  let var_e = standardize_tm (mk_var ("e", `:(num,((num)list)list)tries`)) in
+  let var_t = standardize_tm (mk_var ("t", `:(num,((num)list)list)tries`)) in
+  let var_n = standardize_tm (mk_var ("n", `:num`)) in
+  let var_succs = standardize_tm (mk_var ("succs", `:graph->(graph)list`)) in
+  let var_f = standardize_tm (mk_var ("f", `:graph->(num,((num)list)list)tries->(num,((num)list)list)tries`)) in
+  let var_x = standardize_tm (mk_var ("x", `:graph`)) in
+  let var_wsa = standardize_tm (mk_var ("wsa", `:(graph)list`)) in
+  let var_s = standardize_tm (mk_var ("s", `:(num,((num)list)list)tries`)) in
+  let COND_num_num_list_list_tries_T = standardize (INST_TYPE [`:(num,((num)list)list)tries`, aty] COND_T) in
+  let COND_num_num_list_list_tries_F = standardize (INST_TYPE [`:(num,((num)list)list)tries`, aty] COND_F) in
+  let counter_f_worklist_tree_bounded_graph_num_num_list_list_tries = create_counter "f_worklist_tree_bounded_graph_num_num_list_list_tries" in
+  let rec f_worklist_tree_bounded final_th tm1 tm2 tm3 tm4 tm5 =
+    let () = incr counter_f_worklist_tree_bounded_graph_num_num_list_list_tries in
+    let () = if !counter_f_worklist_tree_bounded_graph_num_num_list_list_tries mod 100 = 0 then Format.printf "%d       \r@?" !counter_f_worklist_tree_bounded_graph_num_num_list_list_tries in
+    match (tm1, tm2, tm3, tm4, tm5) with
+    | (n, (succs, func_succs), (f, func_f), Const ("NIL", _), s) -> TRANS final_th (INST [s, var_s; f, var_f; succs, var_succs; n, var_n] worklist_tree_bounded_ALT_case1)
+    | (n, (succs, func_succs), (f, func_f), Comb (Comb (Const ("CONS", _), x), wsa), s) ->
+      let th = INST [s, var_s; x, var_x; f, var_f; succs, var_succs; n, var_n; wsa, var_wsa] worklist_tree_bounded_ALT_case2 in
+      begin
+        match concl th with
+        | Comb (_, Comb (Comb (Comb (a2, _), _), (Comb (Comb (Comb (Comb (Comb (a5, Comb (_, (Comb (_, a1) as a3))), _), _), Comb (Comb (a4, _), _)), _) as a6))) ->
+          let r1 = f_EQ_num n a1 in
+          if is_true_th r1 then
+            let th0 = MK_COMB (MK_COMB (MK_COMB (REFL a2, r1), REFL s), REFL a6) in
+            let th1 = INST [(s, var_t); (a6, var_e)] COND_num_num_list_list_tries_T in
+            TRANS final_th (TRANS th (TRANS th0 th1))
+          else
+            let r2 = f_SUB n a3 in
+            let r3 = (succs, func_succs) in
+            let r4 = (f, func_f) in
+            let r5 = func_succs x in
+            let r6 =
+              let r6 = f_APPEND_graph (rand (concl r5)) wsa in
+              TRANS (MK_COMB (MK_COMB (REFL a4, r5), REFL wsa)) r6 in
+            let r7 = func_f x s in
+            let th1 = MK_COMB (MK_COMB (MK_COMB (REFL a2, r1), REFL s), REFL a6) in
+            let cond_th = INST[s, var_t; a6, var_e] COND_num_num_list_list_tries_F in
+            let th2 = MK_COMB (MK_COMB (MK_COMB (MK_COMB (MK_COMB (REFL a5, r2), REFL succs), REFL f), r6), r7) in
+            let th3 = TRANS th (TRANS th1 (TRANS cond_th th2)) in
+            f_worklist_tree_bounded (TRANS final_th th3) (rand (concl r2)) r3 r4 (rand (concl r6)) (rand (concl r7))
+        | _ -> failwith "bad pattern"
+      end
+    | _ -> failwith "No match: f_worklist_tree_bounded"
+  in
+  let op, _ = concl worklist_tree_bounded_ALT_case1 |> lhand |> strip_comb in
+  fun tm1 (tm2, f2) (tm3, f3) tm4 tm5 ->
+    let tm = list_mk_comb (op, [tm1; tm2; tm3; tm4; tm5]) in
+    f_worklist_tree_bounded (REFL tm) tm1 (tm2, f2) (tm3, f3) tm4 tm5
+;;
+
+let f_tameEnumFilterBounded =
+  let no_abs_tameEnumFilterBounded_DEF_case1 =
+    match map standardize (local_split_thm no_abs_tameEnumFilterBounded_DEF) with
+    | [th1] -> th1
+    | _ -> failwith "error"
+     in
+  let var_p = standardize_tm (mk_var ("p", `:num`)) in
+  let var_n = standardize_tm (mk_var ("n", `:num`)) in
+  let counter_f_tameEnumFilterBounded = create_counter "f_tameEnumFilterBounded" in
+  let rec f_tameEnumFilterBounded p n =
+    try
+      let () = incr counter_f_tameEnumFilterBounded in
+      let th = INST [p, var_p; n, var_n] no_abs_tameEnumFilterBounded_DEF_case1 in
+      let rhs_eq =
+        match concl th with
+        | Comb (_, Comb (Comb ((Comb (Comb (_, a1), a2) as a5), Comb (Comb (a3, _), a4)), a6)) ->
+          let r1 = (a1, f_next_tame p) in
+          let r2 = (a2, f_tameEnumFilter_abs1) in
+          let r3 = f_seed p in
+          let r4 = MK_COMB (MK_COMB (REFL a3, r3), REFL a4) in
+          let r5 = f_worklist_tree_bounded_graph_num_num_list_list_tries n r1 r2 (rand (concl r4)) a6 in
+          TRANS (MK_COMB (MK_COMB (REFL a5, r4), REFL a6)) r5
+        | _ -> failwith "bad pattern"
+         in
+      TRANS th rhs_eq
+    with
+    | Failure msg -> eval_error msg "f_tameEnumFilterBounded" [p; n]
+    | Eval_error err -> eval_error_propagate err "f_tameEnumFilterBounded" [p; n]
+     in
+  f_tameEnumFilterBounded
+;;
+
+(* 100000: 2908s (non-exclusive) *)
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `400000`);;
+
 
 (* After 241000 steps *)
 (* 31106 *)
@@ -442,5 +536,9 @@ let () =
   set_rule db `(=):A->A->bool`;
   write_rules_names db "out.hl" const_names;;
 loadt "out.hl";;
+
+
+
+
 
 
