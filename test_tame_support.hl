@@ -16,6 +16,8 @@ let f_MAX = Nat_arith.nmax;;
 let f_EQ_num tm1 tm2 = fst (Nat_arith.neq tm1 tm2);;
 
 let numeral = Nat_arith.replace_numerals;;
+install_user_printer ("nat", Nat_arith.print_nat);;
+(* install_parser ("nat", Nat_arith.parse_nat);; *)
 
 loadt "eval_compile.hl";;
 

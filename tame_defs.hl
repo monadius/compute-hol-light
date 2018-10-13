@@ -541,7 +541,8 @@ let vertices_graph_DEF = define
  let tame10_DEF = define
  `tame10 g <=> (let n = countVertices g in 13 <= n /\ n <= 15)`;;
 
-let tame10_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] tame10_DEF;;
+(* let tame10_ALT = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] tame10_DEF;; *)
+let tame10_ALT = CONV_RULE (TOP_DEPTH_CONV let_CONV) tame10_DEF;;
 
 let tame11a_DEF = define
  `tame11a g <=> pred_list (\v. 3 <= degree g v) (vertices_graph g)`;;
