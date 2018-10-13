@@ -197,7 +197,6 @@ set_extra_for_consts db (Extra_memo (Assoc_memo 10000)) [
   (* `excessNotAtRec`; *)
 ];;
 
-compile_new := true;;
 let () =
   set_extra_for_all db (Extra_counter 0);
   set_extra_for_names db (Extra_counter 100) ["worklist_tree_bounded"];

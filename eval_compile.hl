@@ -1,7 +1,7 @@
 needs "eval_compile_tree.hl";;
 
 let generate_eval_errors = ref true;;
-let compile_new = ref false;;
+let compile_tail_rec = ref false;;
 
 let rec count_free_subterms stm tm =
   if tm = stm then 1
@@ -56,180 +56,6 @@ let rec extract_cond_types eval_tree =
     itlist union (map extract_cond_types args) []
   | Refl _ -> [];;
 
-
-let compile_eval_tree env =
-  let mk_refl expr = App (Raw "REFL", expr) in
-  let mk_comb op_name args =
-    let comb eq (arg_name, arg_type) =
-      let arg_expr = Raw arg_name in
-      let arg_eq =
-        match arg_type with
-        | Arg_term -> mk_refl arg_expr
-        | Arg_theorem -> arg_expr
-        | Arg_function -> mk_refl (App (Raw "fst", arg_expr)) in
-      App (Raw "MK_COMB", mk_tuple [eq; arg_eq]) in
-    List.fold_left comb (mk_refl (Raw op_name)) args 
-  in
-  let dest_comb tm_name names =
-    let rec dest prev names =
-      match names with
-      | [] -> []
-      | name :: names ->
-        mk_let (Format.sprintf "op, %s" name, App (Raw "dest_comb", Raw prev)) ::
-          dest "op" names in
-    if names = [] then [mk_let ("op", Raw tm_name)]
-    else dest tm_name (List.rev names) 
-  in
-  let get_fixed_args tms =
-    List.map (fun tm ->
-      let name, _ = 
-        try assoc tm env.tm_names
-        with Failure _ -> 
-          failwith ("Undefined name for: " ^ string_of_term tm) in
-      let ty = type_of tm in
-      if is_fun_ty ty then 
-        mk_tuple [mk_raw name; mk_raw ("func_" ^ name)]
-      else 
-        mk_raw name) tms 
-  in
-  let compile_cond name cond_ty cond_expr then_expr else_expr =
-    let t_var_name, e_var_name, var_exprs =
-      let create_var base_name ty_expr =
-        let tm = mk_var (base_name, cond_ty) in
-        let name, global = assocd tm env.tm_names (base_name, false) in
-        let vname = "var_" ^ name in
-        if global then 
-          false, vname, Raw vname
-        else
-          true, vname, mk_let (vname, App (Raw "mk_var", mk_tuple [String name; ty_expr])) in
-      let ty_expr = Raw "ty" in
-      let flag1, t_var, t_var_expr = create_var "t" ty_expr in
-      let flag2, e_var, e_var_expr = create_var "e" ty_expr in
-      let exprs = (if flag1 then [t_var_expr] else [])
-                  @ (if flag2 then [e_var_expr] else []) in
-      t_var, e_var, exprs in
-    let inst_true, inst_false =
-      let th_name = assocd cond_ty env.cond_names "COND" in
-      let inst_list = Format.sprintf "[then_tm, %s; else_tm, %s]" t_var_name e_var_name in
-      let inst_vars = App (Raw "INST", Raw inst_list) in
-      let inst_expr th =
-        if th_name <> "COND" then 
-          App (inst_vars, Raw th)
-        else
-          App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; Raw th])) in
-      inst_expr (th_name ^ "_T"), inst_expr (th_name ^ "_F") in
-    let type_expr = mk_let ("ty", App (Raw "type_of", Raw "then_tm")) in
-    let cond_eq = mk_let ("cond_eq", cond_expr) in
-    let cond_th =
-      mk_let ("th0", mk_comb "op" ["cond_eq", Arg_theorem; "then_tm", Arg_term; "else_tm", Arg_term]) in
-    let then_branch = chain_let [
-      mk_let ("th1", inst_true);
-      mk_let ("then_eq", then_expr);
-      Raw "TRANS (TRANS th0 th1) then_eq"
-    ] in
-    let else_branch = chain_let [
-      mk_let ("th1", inst_false);
-      mk_let ("else_eq", else_expr);
-      Raw "TRANS (TRANS th0 th1) else_eq"
-    ] in
-    let cond_test = Raw "is_true_th cond_eq" in
-    let if_expr = If (cond_test, then_branch, else_branch) in
-    chain_let (dest_comb name ["cond_tm"; "then_tm"; "else_tm"]
-      @ (if var_exprs = [] then [] else type_expr :: var_exprs)
-      @ [cond_eq; cond_th; if_expr])
-  in
-  let compile_and name expr1 expr2 =
-    let a1_eq = mk_let ("a1_eq", expr1) in
-    let cond_test = Raw "is_true_th a1_eq" in
-    let then_branch = chain_let [
-      mk_let ("a2_eq", expr2);
-      mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
-      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) and_th"
-    ] in
-    let else_branch = chain_let [
-      mk_let ("and_th", Raw "INST[a2, p_var_bool] F_AND");
-      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) and_th"
-    ] in
-    let if_expr = If (cond_test, then_branch, else_branch) in
-    chain_let (dest_comb name ["a1"; "a2"] @ [a1_eq; if_expr])
-  in
-  let compile_or name expr1 expr2 =
-    let a1_eq = mk_let ("a1_eq", expr1) in
-    let cond_test = Raw "is_true_th a1_eq" in
-    let then_branch = chain_let [
-      mk_let ("or_th", Raw "INST[a2, p_var_bool] T_OR");
-      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) or_th"
-    ] in
-    let else_branch = chain_let [
-      mk_let ("a2_eq", expr2);
-      mk_let ("or_th", Raw "INST[rand (concl a2_eq), p_var_bool] F_OR");
-      Raw "TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) or_th"
-    ] in
-    let if_expr = If (cond_test, then_branch, else_branch) in
-    chain_let (dest_comb name ["a1"; "a2"] @ [a1_eq; if_expr])
-  in
-  let compile_app compile name app =
-    let arg_names = enum_names "a" (List.length app.applied_args) in
-    let extra_names = enum_names "tm" (List.length app.extra_args) in
-    let arg_list = map2 (fun name arg -> name, get_eval_type arg) arg_names app.applied_args in
-    let full_arg_list = arg_list @ zip extra_names app.extra_args in
-    let extract_arg (arg_name, arg_type) =
-      match arg_type with
-      | Arg_term -> Raw arg_name
-      | Arg_theorem -> App (Raw "rand", App (Raw "concl", Raw arg_name))
-      | Arg_function -> Raw arg_name in
-    let final_expr = 
-      match app.app_type with
-      | Abs_app _ -> failwith "compile_eval_tree: Abs_app is not allowed"
-      | Basic_app _ -> mk_comb "op" full_arg_list
-      | Const_app _ | Var_app _ ->
-        let fixed_args = get_fixed_args app.fixed_args in
-        let args' = map extract_arg full_arg_list in
-        let f_name = 
-          match app.app_type with 
-          | Const_app f -> f.f_name 
-          | Var_app tm -> "func_" ^ fst (assoc tm env.tm_names)
-          | _ -> failwith "impossible" in
-        let app_expr = mk_app (Raw f_name, fixed_args @ args') in
-        if forall (fun (_, ty) -> ty = Arg_term || ty = Arg_function) full_arg_list then app_expr
-        else
-          let e1 = mk_let ("f_eq", app_expr) in
-          let e2 = mk_comb "op" full_arg_list in
-          let e3 = mk_app (Raw "TRANS", [e2; Raw "f_eq"]) in
-          append_let_body e1 e3 in
-    let arg_eqs =
-      zip arg_list app.applied_args
-      |> List.filter (fun ((_, ty), _) -> ty <> Arg_term)
-      |> List.map (fun ((name, _), arg) -> mk_let (name, compile name arg)) in
-    chain_let (dest_comb name arg_names @ arg_eqs @ [final_expr]), arg_names, extra_names
-  in
-  let rec compile name t =
-    match t with
-    | Func_app {app_type = Basic_app (Const ("COND", Tyapp ("fun", [_; Tyapp ("fun", [ty; _])])));
-                applied_args = [cond_arg; then_arg; else_arg]} ->
-      compile_cond name ty (compile "cond_tm" cond_arg) (compile "then_tm" then_arg) (compile "else_tm" else_arg)
-    | Func_app {app_type = Basic_app (Const ("/\\", _)); applied_args = [arg1; arg2]} ->
-      compile_and name (compile "a1" arg1) (compile "a2" arg2)
-    | Func_app {app_type = Basic_app (Const ("\\/", _)); applied_args = [arg1; arg2]} ->
-      compile_or name (compile "a1" arg1) (compile "a2" arg2)
-    | Refl _ -> mk_refl (Raw name)
-    | Func_app ({applied_args = []} as app) when not (is_basic_app t) ->
-      let f_name = 
-        (match app.app_type with
-        | Var_app tm -> "func_" ^ fst (assoc tm env.tm_names)
-        | Const_app rw -> rw.f_name
-        | _ -> failwith "Partial_app (Basic_app, Abs_app) is not allowed") in
-      let f_expr = mk_app (Raw f_name, get_fixed_args app.fixed_args) in
-      mk_tuple [Raw name; f_expr]
-    | Func_app app ->
-      let body_expr, _, extra_names = compile_app compile name app in
-      if extra_names = [] then
-        body_expr
-      else
-        mk_tuple [Raw name; Lambda (List.map mk_raw extra_names, body_expr)]
-  in
-  compile;;
-
 type case_info = {
   (* vars: (term * string) list; *)
   vars: term list;
@@ -281,12 +107,9 @@ let compile_rhs env ty_inst case =
     chain_let (var_exprs @ [inst_expr])
   else
     let expr = 
-      if !compile_new then
-        let lhs_tm = mk_var ("$tmp", type_of case.rhs_tm) in
-        let rhs_tm = mk_eq (lhs_tm, case.rhs_tm) in
-        compile_eval_tree_new env "concl th" (rhs_tm, case.rhs)
-      else
-        compile_eval_tree env "(rand (concl th))" case.rhs in
+      let lhs_tm = mk_var ("$tmp", type_of case.rhs_tm) in
+      let rhs_tm = mk_eq (lhs_tm, case.rhs_tm) in
+        compile_eval_tree env "concl th" (rhs_tm, case.rhs) in
     chain_let (var_exprs @ [
       mk_let ("th", inst_expr);
       mk_let ("rhs_eq", expr);
@@ -733,11 +556,7 @@ let compile_term db f_name tm =
     compile_function env abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
   let cond_th_exprs = get_cond_th_exprs env.cond_names in
-  let expr = 
-    if !compile_new then
-      compile_eval_tree_new env "tm" (tm, eval_tree)
-    else
-      compile_eval_tree env "tm" eval_tree in
+  let expr = compile_eval_tree env "tm" (tm, eval_tree) in
   mk_let (f_name,
     chain_let (tm_expr :: abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 

@@ -684,7 +684,7 @@ type compile_env = {
   tm_names: (term * (string * bool)) list;
 };;
 
-let compile_eval_tree_new compile_env tm_name (base_tm, tree) =
+let compile_eval_tree compile_env tm_name (base_tm, tree) =
   let args' = map (fun (tm, (name, _)) -> (tm, Arg_term), name) compile_env.tm_names in
   (* TODO: use tm arguments here instead of fun_f *)
   (* let args_f = compile_env.tm_names
