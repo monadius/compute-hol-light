@@ -221,6 +221,7 @@ and eval_cond_rec = {
   then_tm: term;
   else_tm: term;
   tail_rec: bool;
+  tail_flag: bool;
 }
 
 and eval_cmd_type = 
@@ -233,7 +234,6 @@ and eval_cmd_type =
   | Cmd_pair of eval_cmd * eval_cmd
   | Cmd_comb of eval_cmd * eval_cmd
   | Cmd_comb_terms of eval_cmd * eval_cmd
-  | Cmd_trans of eval_cmd * eval_cmd
   | Cmd_convert of eval_arg_type * eval_arg_type * eval_cmd
   | Cmd_cond of eval_cond_rec
   | Cmd_conj of eval_cond_rec
@@ -308,7 +308,8 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [cond_tt];
         then_tm = then_tm;
         else_tm = else_tm;
-        tail_rec = tail_flag;
+        tail_rec = tail_rec;
+        tail_flag = tail_flag;
       } in
       env, cond_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app { app_type = Basic_app (Const ("/\\", _) as op);
@@ -325,7 +326,8 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [a1_tt];
         then_tm = a2_tm;
         else_tm = a2_tm; (* unused *)
-        tail_rec = tail_flag;
+        tail_rec = tail_rec;
+        tail_flag = tail_flag;
       } in
       env, a1_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app { app_type = Basic_app (Const ("\\/", _) as op);
@@ -342,7 +344,8 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [a1_tt];
         then_tm = a2_tm; (* unused *)
         else_tm = a2_tm;
-        tail_rec = tail_flag;
+        tail_rec = tail_rec;
+        tail_flag = tail_flag;
       } in
       env, a1_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app f ->
@@ -375,7 +378,11 @@ let get_eval_commands tail_rec =
           let arg_cmds = map (fun (tm, ty) ->
             let target = if ty = Arg_function then Arg_function else Arg_term in
             convert_ref target (tm, ty)) args in
+          let comb_cmd = 
+            let op, _ = strip_comb_gabs f.app_term in
+            comb op args in
           let last_arg =
+            let comb_ref = mk_ref_cmd comb_cmd in
             match tail_rec with
             | false -> []
             | true when f.extra_args <> [] && simple_app -> []
@@ -383,7 +390,7 @@ let get_eval_commands tail_rec =
               mk_raw_app_cmd (Raw "Some", [
                 mk_raw_app_cmd (Raw "trans_opt", [
                   mk_raw_cmd (Raw "opt_th");
-                  mk_ref_cmd0 (f.app_term, Arg_theorem)
+                  comb_ref
                 ])
               ])]
             | true when tail_flag && simple_app -> 
@@ -392,24 +399,23 @@ let get_eval_commands tail_rec =
               mk_raw_app_cmd (Raw "Some", [
                 mk_raw_app_cmd (Raw "TRANS", [
                   mk_raw_cmd (Raw "base_th");
-                  mk_ref_cmd0 (f.app_term, Arg_theorem)
+                  comb_ref
                 ])
               ])]
+            | true when not simple_app -> 
+              [mk_raw_app_cmd (Raw "Some", [comb_ref])]
             | true -> [mk_raw_cmd (Raw "None")] in
           let app_cmd = mk_cmd (Cmd_app (f.app_type, arg_cmds @ last_arg), f.app_term, Arg_theorem) in
           let cmd =
             if simple_app then app_cmd
+            else if tail_rec then
+              mk_cmd (Cmd_composite [comb_cmd; app_cmd], f.app_term, Arg_theorem)
             else
-              let op, _ = strip_comb_gabs f.app_term in
-              let c = comb op args in
-              if tail_rec && (tail_flag || f.extra_args <> []) then
-                mk_cmd (Cmd_composite [c; app_cmd], f.app_term, Arg_theorem)
-              else
-                let t = mk_cmd (Cmd_trans (c, mk_ref_cmd app_cmd), f.app_term, Arg_theorem) in
-                mk_cmd (Cmd_composite [app_cmd; t], f.app_term, Arg_theorem) in
+              let t = mk_cmd (Cmd_raw_app (Raw "TRANS", [comb_cmd; mk_ref_cmd app_cmd]), f.app_term, Arg_theorem) in
+              mk_cmd (Cmd_composite [app_cmd; t], f.app_term, Arg_theorem) in
           if f.extra_args = [] then cmd
           else
-            let cmd = 
+            let cmd =
               if simple_app then cmd 
               else mk_cmd (Cmd_lambda (tail_rec, extra_args, cmd), f.app_term, Arg_function) in
             mk_cmd (Cmd_pair (mk_ref_cmd0 (f.app_term, Arg_term), cmd), f.app_term, Arg_function)
@@ -435,7 +441,6 @@ let optimize_comb tm =
       | Cmd_app (f, args) -> Cmd_app (f, map optimize_cmd args)
       | Cmd_lambda (t, tms, a) -> Cmd_lambda (t, tms, optimize_cmd a)
       | Cmd_pair (a1, a2) -> Cmd_pair (optimize_cmd a1, optimize_cmd a2)
-      | Cmd_trans (a1, a2) -> Cmd_trans (optimize_cmd a1, optimize_cmd a2)
       | Cmd_comb_terms (a1, a2) -> Cmd_comb_terms (optimize_cmd a1, optimize_cmd a2)
       | Cmd_convert (target, ty, a) -> 
         (match target, ty with
@@ -486,7 +491,6 @@ let rec pattern_cmd env (Cmd (t, r)) =
   | Cmd_pair (a1, a2) -> process_args env [a1; a2]
   | Cmd_comb (a1, a2) -> process_args env [a1; a2]
   | Cmd_comb_terms (a1, a2) -> process_args env [a1; a2]
-  | Cmd_trans (a1, a2) -> process_args env [a1; a2]
   | Cmd_convert (_, _, a1) -> process_args env [a1]
   | Cmd_cond cond -> process_args env (cond_args cond)
   | Cmd_conj cond -> process_args env (cond_args cond)
@@ -702,8 +706,6 @@ and cmd_expr env (Cmd (t, r)) =
     Lambda (map mk_raw names, body)
   | Cmd_pair (a1, a2) ->
     mk_tuple (map (cmd_expr env) [a1; a2])
-  | Cmd_trans (a1, a2) ->
-    mk_app (mk_raw "TRANS", map (cmd_expr env) [a1; a2])
   | Cmd_comb (a1, a2) ->
     App (mk_raw "MK_COMB", mk_tuple (map (cmd_expr env) [a1; a2]))
   | Cmd_comb_terms (a1, a2) ->
