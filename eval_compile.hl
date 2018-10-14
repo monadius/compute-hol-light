@@ -103,18 +103,25 @@ let compile_rhs env ty_inst case =
       let inst_str = Format.sprintf "[%s]" 
         (String.concat "; " (map (fun (a, b) -> a ^ ", " ^ b) inst)) in
       mk_app (Raw "INST", [Raw inst_str; type_inst]) in
+  let base_expr =
+    if not !compile_tail_rec then inst_expr
+    else
+      mk_app (Raw "trans_opt", [Raw "opt_th"; inst_expr]) in
   if is_eval_tree_refl case.rhs then
-    chain_let (var_exprs @ [inst_expr])
+    chain_let (var_exprs @ [base_expr])
   else
     let expr = 
       let lhs_tm = mk_var ("$tmp", type_of case.rhs_tm) in
       let rhs_tm = mk_eq (lhs_tm, case.rhs_tm) in
-        compile_eval_tree env "concl th" (rhs_tm, case.rhs) in
-    chain_let (var_exprs @ [
-      mk_let ("th", inst_expr);
-      mk_let ("rhs_eq", expr);
-      mk_app (Raw "TRANS", [Raw "th"; Raw "rhs_eq"])
-    ]);;
+        compile_eval_tree env !compile_tail_rec "concl base_th" (rhs_tm, case.rhs) in
+    chain_let (var_exprs @ [mk_let ("base_th", base_expr)] @
+      if !compile_tail_rec then [
+        expr
+      ]
+      else [
+        mk_let ("rhs_eq", expr);
+        mk_app (Raw "TRANS", [Raw "base_th"; Raw "rhs_eq"])
+      ]);;
 
 
 let compile_function env func =
@@ -151,7 +158,7 @@ let compile_function env func =
       [mk_let ("ty_inst", e)] 
   in
   let add_try expr arg_exprs =
-    if not !generate_eval_errors then expr
+    if not !generate_eval_errors || !compile_tail_rec then expr
     else
       let case1 = (Raw "Failure msg", 
                    mk_app (Raw "eval_error", 
@@ -204,6 +211,9 @@ let compile_function env func =
     | Extra_memo t -> add_memo t func.name arg_exprs expr
     | Extra_arg_list -> add_arg_list func.name arg_exprs expr
   in
+  let add_opt_arg arg_exprs =
+    if !compile_tail_rec then arg_exprs @ [Raw "opt_th"] else arg_exprs
+  in
   let ty_inst =
     if func.poly_indices = [] then None
     else Some (mk_raw "ty_inst") in
@@ -219,7 +229,7 @@ let compile_function env func =
       case1.args in
     let body_expr' = chain_let (get_ty_exprs arg_exprs @ [body]) in
     let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
-    Let (true, func.name, args, add_try body_expr arg_exprs, None)
+    Let (true, func.name, add_opt_arg args, add_try body_expr arg_exprs, None)
   | cs ->
     let arg_names = enum_names "tm" (List.length case1.args) in
     let arg_exprs = 
@@ -235,7 +245,7 @@ let compile_function env func =
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
     let body_expr' = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
     let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
-    Let (true, func.name, List.map mk_raw arg_names, add_try body_expr arg_exprs, None);;
+    Let (true, func.name, add_opt_arg (List.map mk_raw arg_names), add_try body_expr arg_exprs, None);;
 
 
 let compile_rules db rules =
@@ -556,7 +566,7 @@ let compile_term db f_name tm =
     compile_function env abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
   let cond_th_exprs = get_cond_th_exprs env.cond_names in
-  let expr = compile_eval_tree env "tm" (tm, eval_tree) in
+  let expr = compile_eval_tree env !compile_tail_rec "tm" (tm, eval_tree) in
   mk_let (f_name,
     chain_let (tm_expr :: abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 

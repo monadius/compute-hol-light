@@ -1,3 +1,13 @@
+let trans_opt_opt th_opt th =
+  match th_opt with
+  | None -> Some th
+  | Some th0 -> Some (TRANS th0 th);;
+
+let trans_opt th_opt th =
+  match th_opt with
+  | None -> th
+  | Some th0 -> TRANS th0 th;;
+
 type eval_error = {
   failure_msg: string;
   eval_name: string;
