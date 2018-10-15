@@ -566,9 +566,13 @@ let compile_term db f_name tm =
     compile_function env abs_f) abs in
   let tm_expr = mk_let ("tm", Term tm) in
   let cond_th_exprs = get_cond_th_exprs env.cond_names in
+  let base_th_exprs =
+    if !compile_tail_rec then
+      [mk_let ("base_th", App (Raw "REFL", Raw "tm"))]
+    else [] in
   let expr = compile_eval_tree env !compile_tail_rec "tm" (tm, eval_tree) in
   mk_let (f_name,
-    chain_let (tm_expr :: abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
+    chain_let (tm_expr :: base_th_exprs @ abs_th_exprs @ cond_th_exprs @ var_exprs @ abs_exprs @ [expr]));;
 
 
 let print_rules db fmt ?term rules =

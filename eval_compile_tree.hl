@@ -220,7 +220,6 @@ and eval_cond_rec = {
   cond_th_cmd: eval_cmd;
   then_tm: term;
   else_tm: term;
-  tail_rec: bool;
   tail_flag: bool;
 }
 
@@ -308,8 +307,7 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [cond_tt];
         then_tm = then_tm;
         else_tm = else_tm;
-        tail_rec = tail_rec;
-        tail_flag = tail_flag;
+        tail_flag = tail_rec && tail_flag;
       } in
       env, cond_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app { app_type = Basic_app (Const ("/\\", _) as op);
@@ -326,8 +324,7 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [a1_tt];
         then_tm = a2_tm;
         else_tm = a2_tm; (* unused *)
-        tail_rec = tail_rec;
-        tail_flag = tail_flag;
+        tail_flag = tail_rec && tail_flag;
       } in
       env, a1_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app { app_type = Basic_app (Const ("\\/", _) as op);
@@ -344,8 +341,7 @@ let get_eval_commands tail_rec =
         cond_th_cmd = comb op [a1_tt];
         then_tm = a2_tm; (* unused *)
         else_tm = a2_tm;
-        tail_rec = tail_rec;
-        tail_flag = tail_flag;
+        tail_flag = tail_rec && tail_flag;
       } in
       env, a1_cmds @ [mk_cmd (cmd, tm, Arg_theorem)]
     | Func_app f ->
