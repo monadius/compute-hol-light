@@ -581,6 +581,16 @@ and cmd_cond env cond =
 
   let mk_raw_refl name = App (Raw "REFL", Raw name) in
 
+  let comb args =
+    List.fold_left 
+      (fun expr arg -> App (Raw "MK_COMB", mk_tuple [expr; arg]))
+      (hd args) (tl args) in
+
+  let trans args =
+    List.fold_left
+      (fun expr arg -> mk_app (Raw "TRANS", [expr; arg]))
+      (hd args) (tl args) in
+
   let inst suffix t e =
     let th_name = assocd cond_ty env.cond_names "COND" in
     let th_expr = Raw (th_name ^ suffix) in
@@ -593,38 +603,37 @@ and cmd_cond env cond =
     else
       App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; th_expr])) in
 
-  let then_branch = chain_let @@
-    if then_exprs = [] then [
-      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [ 
-                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
-                      mk_raw_refl else_name]));
-      mk_let ("th1", inst "_T" (Raw then_name) (Raw else_name));
-      Raw "TRANS th0 th1"
+  let branch_exprs exprs flag =
+    let suffix = if flag then "_T" else "_F" in
+    let cond_eq = fresh_name env "cond_eq" in
+    let th0 = fresh_name env "th0" in
+    let th1 = fresh_name env "th1" in
+    let trans01 = trans [Raw th0; Raw th1] in
+    let iarg1, iarg2 =
+      if flag then Raw "rand (concl cond_eq)", Raw else_name
+      else Raw then_name, Raw "rand (concl cond_eq)" in
+    let carg1, carg2 =
+      if flag then Raw cond_eq, mk_raw_refl else_name
+      else mk_raw_refl then_name, Raw cond_eq in
+    if exprs = [] then [
+      mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
+      mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
+      if cond.tail_flag then trans [Raw "base_th"; Raw th0; Raw th1] else trans01
     ]
+    else if cond.tail_flag then [
+      mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
+      mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
+      mk_let ("base_th", trans [Raw "base_th"; Raw th0; Raw th1]);
+    ] @ exprs
     else [
-      mk_let ("then_eq", chain_let then_exprs);
-      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [
-                      App (Raw "MK_COMB", mk_tuple [base_comb; Raw "then_eq"]);
-                      mk_raw_refl else_name]));
-      mk_let ("th1", inst "_T" (Raw "rand (concl then_eq)") (Raw else_name));
-      Raw "TRANS th0 th1"
+      mk_let (cond_eq, chain_let exprs);
+      mk_let ("th0", comb [base_comb; carg1; carg2]);
+      mk_let ("th1", inst suffix iarg1 iarg2);
+      trans01
     ] in
-  let else_branch = chain_let @@
-    if else_exprs = [] then [
-      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [ 
-                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
-                      mk_raw_refl else_name]));
-      mk_let ("th1", inst "_F" (Raw then_name) (Raw else_name));
-      Raw "TRANS th0 th1"
-    ]
-    else [
-      mk_let ("else_eq", chain_let else_exprs);
-      mk_let ("th0", App (Raw "MK_COMB", mk_tuple [
-                      App (Raw "MK_COMB", mk_tuple [base_comb; mk_raw_refl then_name]);
-                      Raw "else_eq"]));
-      mk_let ("th1", inst "_F" (Raw then_name) (Raw "rand (concl else_eq)"));
-      Raw "TRANS th0 th1"
-    ] in
+
+  let then_branch = chain_let @@ branch_exprs then_exprs true in
+  let else_branch = chain_let @@ branch_exprs else_exprs false in
   let cond_test = App (Raw "is_true_th", cond_expr) in
   let if_expr = If (cond_test, then_branch, else_branch) in
   chain_let @@
