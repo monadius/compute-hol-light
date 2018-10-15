@@ -633,22 +633,36 @@ let cmds_to_exprs =
 
     let cond_test = App (Raw "is_true_th", a1_expr) in
     let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
-    let true_branch =
-      if a2_exprs = [] then App (inst_expr, Raw "T_AND")
-      else chain_let [
+    let th0 = fresh_name env "th0" in
+    let th1 = fresh_name env "th1" in
+    let true_exprs =
+      if a2_exprs = [] then [
+        mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+        mk_let (th1, App (inst_expr, Raw "T_AND"));
+        if cond.tail_flag then 
+          trans [Raw "base_th"; Raw th0; Raw th1]
+        else 
+          trans [Raw th0; Raw th1]
+      ]
+      else if cond.tail_flag then [
+        mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+        mk_let (th1, App (inst_expr, Raw "T_AND"));
+        mk_let ("base_th", trans [Raw "base_th"; Raw th0; Raw th1])
+      ] @ a2_exprs
+      else [
         mk_let ("a2_eq", chain_let a2_exprs);
         mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
-        mk_app (Raw "TRANS", [
-          App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
-          Raw "and_th"])
+        trans [comb [base_comb; Raw "a2_eq"]; Raw "and_th"]
       ] in
-    let false_branch = chain_let [
-      mk_let ("and_th", App (inst_expr, Raw "F_AND"));
-      mk_app (Raw "TRANS", [
-        App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
-        Raw "and_th"])
+    let false_exprs = [
+      mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+      mk_let (th1, App (inst_expr, Raw "F_AND"));
+      if cond.tail_flag then
+        trans [Raw "base_th"; Raw th0; Raw th1]
+      else
+        trans [Raw th0; Raw th1]
     ] in
-    If (cond_test, true_branch, false_branch)
+    If (cond_test, chain_let true_exprs, chain_let false_exprs)
 
   and cmd_disj env cond =
     let a1_expr = cmd_expr env cond.cond_cmd in
@@ -658,22 +672,36 @@ let cmds_to_exprs =
 
     let cond_test = App (Raw "is_true_th", a1_expr) in
     let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
-    let false_branch =
-      if a2_exprs = [] then App (inst_expr, Raw "F_OR")
-      else chain_let [
+    let th0 = fresh_name env "th0" in
+    let th1 = fresh_name env "th1" in
+    let false_exprs =
+      if a2_exprs = [] then [
+        mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+        mk_let (th1, App (inst_expr, Raw "F_OR"));
+        if cond.tail_flag then 
+          trans [Raw "base_th"; Raw th0; Raw th1]
+        else 
+          trans [Raw th0; Raw th1]
+      ]
+      else if cond.tail_flag then [
+        mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+        mk_let (th1, App (inst_expr, Raw "F_OR"));
+        mk_let ("base_th", trans [Raw "base_th"; Raw th0; Raw th1])
+      ] @ a2_exprs
+      else [
         mk_let ("a2_eq", chain_let a2_exprs);
         mk_let ("or_th", Raw "INST[rand (concl a2_eq), p_var_bool] F_OR");
-        mk_app (Raw "TRANS", [
-          App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
-          Raw "or_th"])
+        trans [comb [base_comb; Raw "a2_eq"]; Raw "or_th"]
       ] in
-    let true_branch = chain_let [
-      mk_let ("or_th", App (inst_expr, Raw "T_OR"));
-      mk_app (Raw "TRANS", [
-        App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
-        Raw "or_th"])
+    let true_exprs = [
+      mk_let (th0, comb [base_comb; mk_raw_refl a2_name]);
+      mk_let (th1, App (inst_expr, Raw "T_OR"));
+      if cond.tail_flag then
+        trans [Raw "base_th"; Raw th0; Raw th1]
+      else
+        trans [Raw th0; Raw th1]
     ] in
-    If (cond_test, true_branch, false_branch)
+    If (cond_test, chain_let true_exprs, chain_let false_exprs)
   
   and cmds_to_exprs env = function
     | [] -> env, []
