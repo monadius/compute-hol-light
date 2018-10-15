@@ -128,14 +128,29 @@ let compile_rhs env extra ty_inst case =
 let compile_function env func =
   let var_name vars i = fst (assoc (List.nth vars i) env.tm_names) in
   let compile_case ty_inst case =
-    let vars = case.vars in
+    let used_indices = ref [] in
+    let guards = ref [] in
+    let all_names = ref (map (fun (_, (name, _)) -> name) env.tm_names) in
+    let var_name i =
+      let name = var_name case.vars i in
+      if mem i !used_indices then begin
+        let name' = variant_name !all_names name in
+        all_names := name' :: !all_names;
+        guards := (Format.sprintf "Pervasives.compare %s %s = 0" name name') :: !guards;
+        name'
+      end 
+      else begin
+        used_indices := i :: !used_indices;
+        name
+      end 
+    in
     let rec compile_pat = function
       | Pvar i, Tfun (args, _) ->
-        let name = var_name vars i in
+        let name = var_name i in
         (* TODO: fun_f yields unused argument warnings: use tm arguments directly *)
         (* Raw (Format.sprintf "((%s, func_%s) as fun_%s)" name name name) *)
         Raw (Format.sprintf "(%s, func_%s)" name name)
-      | Pvar i, _ -> Raw (var_name vars i)
+      | Pvar i, _ -> Raw (var_name i)
       | Papp _, Tfun _ -> failwith "Patterns are not allowed for functions"
       | Papp (c, ps), ty ->
         let c_name, _ = dest_const c in
@@ -144,7 +159,7 @@ let compile_function env func =
           (List.map (fun p -> compile_pat (p, ty)) ps) in
     let pats = List.map compile_pat case.args in
     let body = compile_rhs env func.extra ty_inst case in
-    pats, body
+    pats, !guards, body
   in
   let get_ty_exprs arg_exprs =
     if func.poly_indices = [] then []
@@ -229,7 +244,7 @@ let compile_function env func =
   let case1 = hd func.cases in
   match List.map (compile_case ty_inst) func.cases with
   | [] -> failwith "compile_function: no cases"
-  | [args, body] when forall (function (Pvar _, _) -> true | _ -> false) case1.args ->
+  | [args, [], body] when forall (function (Pvar _, _) -> true | _ -> false) case1.args ->
     let arg_exprs = 
       List.map (fun arg ->
         match arg with
@@ -250,7 +265,12 @@ let compile_function env func =
       case1.args in
     let err_pat = 
       (Raw "_", None, App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
-    let cs' = List.map (fun (pats, body) -> mk_tuple pats, None, body) cs in
+    let cs' = List.map 
+      (fun (pats, guards, body) ->
+        let guard =
+          if guards = [] then None
+          else Some (Raw (String.concat " && " guards)) in
+        mk_tuple pats, guard, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
     let body_expr' = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
     let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
