@@ -1,7 +1,7 @@
 needs "eval_compile_tree.hl";;
 
-let generate_eval_errors = ref true;;
-let compile_tail_rec = ref false;;
+let generate_eval_errors = ref false;;
+let compile_tail_rec = ref true;;
 
 let rec count_free_subterms stm tm =
   if tm = stm then 1
@@ -158,7 +158,7 @@ let compile_function env func =
       [mk_let ("ty_inst", e)] 
   in
   let add_try expr arg_exprs =
-    if not !generate_eval_errors || !compile_tail_rec then expr
+    if not !generate_eval_errors then expr
     else
       let case1 = (Raw "Failure msg", 
                    mk_app (Raw "eval_error", 
