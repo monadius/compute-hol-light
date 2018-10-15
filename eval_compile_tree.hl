@@ -540,196 +540,196 @@ let extend_env env (tm, ty) =
   }, name;;
 
 
-let rec cmds_to_exprs env = function
-  | [] -> env, []
-  | cmd :: cmds ->
-    let expr = cmd_expr env cmd in
-    let env, name = extend_env env (cmd_result cmd, cmd_type cmd) in
-    let env, exprs = cmds_to_exprs env cmds in
-    if exprs = [] then env, [expr]
-    else
-      env, mk_let (name, expr) :: exprs
-
-and cmd_cond env cond =
-  let cond_expr = cmd_expr env cond.cond_cmd in
-  let _, then_exprs = cmds_to_exprs env cond.then_cmds in
-  let _, else_exprs = cmds_to_exprs env cond.else_cmds in
-  let base_comb = cmd_expr env cond.cond_th_cmd in
-  let then_name = get_name env (cond.then_tm, Arg_term) in
-  let else_name = get_name env (cond.else_tm, Arg_term) in
-
-  let cond_ty = type_of cond.then_tm in
-  let type_expr = mk_let ("ty", App (Raw "type_of", Raw then_name)) in
-
-  let t_var_name, e_var_name, var_exprs =
-    let create_var base_name ty_expr =
-      let tm = mk_var (base_name, cond_ty) in
-      let name = get_name env (tm, Arg_term) ~default:base_name in
-      let vname = "var_" ^ name in
-      if mem tm env.global_vars then
-        vname, []
-      else
-        vname, [mk_let (vname, App (Raw "mk_var", mk_tuple [String name; ty_expr]))] in
-    let ty_expr = Raw "ty" in
-    let t_var, t_var_exprs = create_var "t" ty_expr in
-    let e_var, e_var_exprs = create_var "e" ty_expr in
-    t_var, e_var, t_var_exprs @ e_var_exprs in
-
+let cmds_to_exprs =
   let mk_raw_refl name = App (Raw "REFL", Raw name) in
-
   let comb args =
     List.fold_left 
       (fun expr arg -> App (Raw "MK_COMB", mk_tuple [expr; arg]))
-      (hd args) (tl args) in
-
+      (hd args) (tl args) 
+  in
   let trans args =
     List.fold_left
       (fun expr arg -> mk_app (Raw "TRANS", [expr; arg]))
-      (hd args) (tl args) in
+      (hd args) (tl args) 
+  in
+  let rec cmd_cond env cond =
+    let cond_expr = cmd_expr env cond.cond_cmd in
+    let _, then_exprs = cmds_to_exprs env cond.then_cmds in
+    let _, else_exprs = cmds_to_exprs env cond.else_cmds in
+    let base_comb = cmd_expr env cond.cond_th_cmd in
+    let then_name = get_name env (cond.then_tm, Arg_term) in
+    let else_name = get_name env (cond.else_tm, Arg_term) in
 
-  let inst suffix t e =
-    let th_name = assocd cond_ty env.cond_names "COND" in
-    let th_expr = Raw (th_name ^ suffix) in
-    let inst_vars = App (Raw "INST", mk_list_expr [
-      mk_tuple [t; Raw t_var_name];
-      mk_tuple [e; Raw e_var_name];
-    ]) in
-    if th_name <> "COND" then
-      App (inst_vars, th_expr)
-    else
-      App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; th_expr])) in
+    let cond_ty = type_of cond.then_tm in
+    let type_expr = mk_let ("ty", App (Raw "type_of", Raw then_name)) in
 
-  let branch_exprs exprs flag =
-    let suffix = if flag then "_T" else "_F" in
-    let cond_eq = fresh_name env "cond_eq" in
-    let th0 = fresh_name env "th0" in
-    let th1 = fresh_name env "th1" in
-    let trans01 = trans [Raw th0; Raw th1] in
-    let iarg1, iarg2 =
-      if flag then Raw "rand (concl cond_eq)", Raw else_name
-      else Raw then_name, Raw "rand (concl cond_eq)" in
-    let carg1, carg2 =
-      if flag then Raw cond_eq, mk_raw_refl else_name
-      else mk_raw_refl then_name, Raw cond_eq in
-    if exprs = [] then [
-      mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
-      mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
-      if cond.tail_flag then trans [Raw "base_th"; Raw th0; Raw th1] else trans01
-    ]
-    else if cond.tail_flag then [
-      mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
-      mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
-      mk_let ("base_th", trans [Raw "base_th"; Raw th0; Raw th1]);
-    ] @ exprs
-    else [
-      mk_let (cond_eq, chain_let exprs);
-      mk_let ("th0", comb [base_comb; carg1; carg2]);
-      mk_let ("th1", inst suffix iarg1 iarg2);
-      trans01
-    ] in
+    let t_var_name, e_var_name, var_exprs =
+      let create_var base_name ty_expr =
+        let tm = mk_var (base_name, cond_ty) in
+        let name = get_name env (tm, Arg_term) ~default:base_name in
+        let vname = "var_" ^ name in
+        if mem tm env.global_vars then
+          vname, []
+        else
+          vname, [mk_let (vname, App (Raw "mk_var", mk_tuple [String name; ty_expr]))] in
+      let ty_expr = Raw "ty" in
+      let t_var, t_var_exprs = create_var "t" ty_expr in
+      let e_var, e_var_exprs = create_var "e" ty_expr in
+      t_var, e_var, t_var_exprs @ e_var_exprs 
+    in
+    let inst suffix t e =
+      let th_name = assocd cond_ty env.cond_names "COND" in
+      let th_expr = Raw (th_name ^ suffix) in
+      let inst_vars = App (Raw "INST", mk_list_expr [
+        mk_tuple [t; Raw t_var_name];
+        mk_tuple [e; Raw e_var_name];
+      ]) in
+      if th_name <> "COND" then
+        App (inst_vars, th_expr)
+      else
+        App (inst_vars, mk_app (Raw "INST_TYPE", [Raw "[ty, aty]"; th_expr])) 
+    in
+    let branch_exprs exprs flag =
+      let suffix = if flag then "_T" else "_F" in
+      let cond_eq = fresh_name env "cond_eq" in
+      let th0 = fresh_name env "th0" in
+      let th1 = fresh_name env "th1" in
+      let trans01 = trans [Raw th0; Raw th1] in
+      let iarg1, iarg2 =
+        if flag then Raw "rand (concl cond_eq)", Raw else_name
+        else Raw then_name, Raw "rand (concl cond_eq)" in
+      let carg1, carg2 =
+        if flag then Raw cond_eq, mk_raw_refl else_name
+        else mk_raw_refl then_name, Raw cond_eq in
+      if exprs = [] then [
+        mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
+        mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
+        if cond.tail_flag then trans [Raw "base_th"; Raw th0; Raw th1] else trans01
+      ]
+      else if cond.tail_flag then [
+        mk_let (th0, comb [base_comb; mk_raw_refl then_name; mk_raw_refl else_name]);
+        mk_let (th1, inst suffix (Raw then_name) (Raw else_name));
+        mk_let ("base_th", trans [Raw "base_th"; Raw th0; Raw th1]);
+      ] @ exprs
+      else [
+        mk_let (cond_eq, chain_let exprs);
+        mk_let ("th0", comb [base_comb; carg1; carg2]);
+        mk_let ("th1", inst suffix iarg1 iarg2);
+        trans01
+      ] in
+    let then_branch = chain_let @@ branch_exprs then_exprs true in
+    let else_branch = chain_let @@ branch_exprs else_exprs false in
+    let cond_test = App (Raw "is_true_th", cond_expr) in
+    let if_expr = If (cond_test, then_branch, else_branch) in
+    chain_let @@
+      (if var_exprs = [] then [] else type_expr :: var_exprs)
+      @ [if_expr]
 
-  let then_branch = chain_let @@ branch_exprs then_exprs true in
-  let else_branch = chain_let @@ branch_exprs else_exprs false in
-  let cond_test = App (Raw "is_true_th", cond_expr) in
-  let if_expr = If (cond_test, then_branch, else_branch) in
-  chain_let @@
-    (if var_exprs = [] then [] else type_expr :: var_exprs)
-    @ [if_expr]
+  and cmd_conj env cond =
+    let a1_expr = cmd_expr env cond.cond_cmd in
+    let _, a2_exprs = cmds_to_exprs env cond.then_cmds in
+    let a2_name = get_name env (cond.then_tm, Arg_term) in
+    let base_comb = cmd_expr env cond.cond_th_cmd in
 
-and cmd_conj env cond =
-  let a1_expr = cmd_expr env cond.cond_cmd in
-  let _, a2_exprs = cmds_to_exprs env cond.then_cmds in
-  let a2_name = get_name env (cond.then_tm, Arg_term) in
-  let base_comb = cmd_expr env cond.cond_th_cmd in
-
-  let cond_test = App (Raw "is_true_th", a1_expr) in
-  let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
-  let true_branch =
-    if a2_exprs = [] then App (inst_expr, Raw "T_AND")
-    else chain_let [
-      mk_let ("a2_eq", chain_let a2_exprs);
-      mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
+    let cond_test = App (Raw "is_true_th", a1_expr) in
+    let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
+    let true_branch =
+      if a2_exprs = [] then App (inst_expr, Raw "T_AND")
+      else chain_let [
+        mk_let ("a2_eq", chain_let a2_exprs);
+        mk_let ("and_th", Raw "INST[rand (concl a2_eq), p_var_bool] T_AND");
+        mk_app (Raw "TRANS", [
+          App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
+          Raw "and_th"])
+      ] in
+    let false_branch = chain_let [
+      mk_let ("and_th", App (inst_expr, Raw "F_AND"));
       mk_app (Raw "TRANS", [
-        App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
+        App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
         Raw "and_th"])
     ] in
-  let false_branch = chain_let [
-    mk_let ("and_th", App (inst_expr, Raw "F_AND"));
-    mk_app (Raw "TRANS", [
-      App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
-      Raw "and_th"])
-  ] in
-  If (cond_test, true_branch, false_branch)
+    If (cond_test, true_branch, false_branch)
 
-and cmd_disj env cond =
-  let a1_expr = cmd_expr env cond.cond_cmd in
-  let _, a2_exprs = cmds_to_exprs env cond.else_cmds in
-  let a2_name = get_name env (cond.then_tm, Arg_term) in
-  let base_comb = cmd_expr env cond.cond_th_cmd in
+  and cmd_disj env cond =
+    let a1_expr = cmd_expr env cond.cond_cmd in
+    let _, a2_exprs = cmds_to_exprs env cond.else_cmds in
+    let a2_name = get_name env (cond.then_tm, Arg_term) in
+    let base_comb = cmd_expr env cond.cond_th_cmd in
 
-  let cond_test = App (Raw "is_true_th", a1_expr) in
-  let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
-  let false_branch =
-    if a2_exprs = [] then App (inst_expr, Raw "F_OR")
-    else chain_let [
-      mk_let ("a2_eq", chain_let a2_exprs);
-      mk_let ("or_th", Raw "INST[rand (concl a2_eq), p_var_bool] F_OR");
+    let cond_test = App (Raw "is_true_th", a1_expr) in
+    let inst_expr = Raw (Format.sprintf "INST[%s, p_var_bool]" a2_name) in
+    let false_branch =
+      if a2_exprs = [] then App (inst_expr, Raw "F_OR")
+      else chain_let [
+        mk_let ("a2_eq", chain_let a2_exprs);
+        mk_let ("or_th", Raw "INST[rand (concl a2_eq), p_var_bool] F_OR");
+        mk_app (Raw "TRANS", [
+          App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
+          Raw "or_th"])
+      ] in
+    let true_branch = chain_let [
+      mk_let ("or_th", App (inst_expr, Raw "T_OR"));
       mk_app (Raw "TRANS", [
-        App (Raw "MK_COMB", mk_tuple [base_comb; Raw "a2_eq"]); 
+        App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
         Raw "or_th"])
     ] in
-  let true_branch = chain_let [
-    mk_let ("or_th", App (inst_expr, Raw "T_OR"));
-    mk_app (Raw "TRANS", [
-      App (Raw "MK_COMB", mk_tuple [base_comb; App (Raw "REFL", Raw a2_name)]); 
-      Raw "or_th"])
-  ] in
-  If (cond_test, true_branch, false_branch)
+    If (cond_test, true_branch, false_branch)
+  
+  and cmds_to_exprs env = function
+    | [] -> env, []
+    | cmd :: cmds ->
+      let expr = cmd_expr env cmd in
+      let env, name = extend_env env (cmd_result cmd, cmd_type cmd) in
+      let env, exprs = cmds_to_exprs env cmds in
+      if exprs = [] then env, [expr]
+      else
+        env, mk_let (name, expr) :: exprs
 
-and cmd_expr env (Cmd (t, r)) =
-  match t with
-  | Cmd_ref -> Raw (get_name env (r.result, r.result_type))
-  | Cmd_raw expr -> expr
-  | Cmd_raw_app (expr, args) -> mk_app (expr, map (cmd_expr env) args)
-  | Cmd_cond cond -> cmd_cond env cond
-  | Cmd_conj cond -> cmd_conj env cond
-  | Cmd_disj cond -> cmd_disj env cond
-  | Cmd_app (app, args) ->
-    let f_name =
-      match app with
-      | Var_app tm -> "func_" ^ get_name env (tm, Arg_term)
-      | Const_app rule -> rule.f_name
-      | _ -> failwith "cmd_exp: Cmd_app" in
-    mk_app (mk_raw f_name, map (cmd_expr env) args)
-  | Cmd_lambda (tail_rec, tms, a1) ->
-    let names =
-      enum_names "tm" (length tms)
-      |> map (name_variant (map snd env.names)) in
-    let env' = { env with names = zip tms names @ env.names } in
-    let body = cmd_expr env' a1 in
-    let names = if tail_rec then names @ ["opt_th"] else names in
-    Lambda (map mk_raw names, body)
-  | Cmd_pair (a1, a2) ->
-    mk_tuple (map (cmd_expr env) [a1; a2])
-  | Cmd_comb (a1, a2) ->
-    App (mk_raw "MK_COMB", mk_tuple (map (cmd_expr env) [a1; a2]))
-  | Cmd_comb_terms (a1, a2) ->
-    App (mk_raw "mk_comb", mk_tuple (map (cmd_expr env) [a1; a2]))
-  | Cmd_convert (target, source, a) ->
-      let arg = cmd_expr env a in
-      let expr =
-        match (target, source) with
-        | t1, t2 when t1 = t2 -> arg
-        | Arg_term, Arg_function -> App (Raw "fst", arg)
-        | Arg_term, Arg_theorem -> App (Raw "rand", App (Raw "concl", arg))
-        | Arg_theorem, Arg_term -> App (Raw "REFL", arg)
-        | Arg_theorem, Arg_function -> App (Raw "REFL", App (Raw "fst", arg))
-        | Arg_function, Arg_term -> App (Raw "to_func", arg)
-        | _ -> failwith "Cmd_convert: unsupported conversion" in
-      expr
-  | Cmd_composite cmds ->
-    let _, exprs = cmds_to_exprs env cmds in
-    chain_let exprs;;
+  and cmd_expr env (Cmd (t, r)) =
+    match t with
+    | Cmd_ref -> Raw (get_name env (r.result, r.result_type))
+    | Cmd_raw expr -> expr
+    | Cmd_raw_app (expr, args) -> mk_app (expr, map (cmd_expr env) args)
+    | Cmd_cond cond -> cmd_cond env cond
+    | Cmd_conj cond -> cmd_conj env cond
+    | Cmd_disj cond -> cmd_disj env cond
+    | Cmd_app (app, args) ->
+      let f_name =
+        match app with
+        | Var_app tm -> "func_" ^ get_name env (tm, Arg_term)
+        | Const_app rule -> rule.f_name
+        | _ -> failwith "cmd_exp: Cmd_app" in
+      mk_app (mk_raw f_name, map (cmd_expr env) args)
+    | Cmd_lambda (tail_rec, tms, a1) ->
+      let names =
+        enum_names "tm" (length tms) |> map (fresh_name env) in
+      let env' = { env with names = zip tms names @ env.names } in
+      let body = cmd_expr env' a1 in
+      let names = if tail_rec then names @ ["opt_th"] else names in
+      Lambda (map mk_raw names, body)
+    | Cmd_pair (a1, a2) ->
+      mk_tuple (map (cmd_expr env) [a1; a2])
+    | Cmd_comb (a1, a2) ->
+      App (mk_raw "MK_COMB", mk_tuple (map (cmd_expr env) [a1; a2]))
+    | Cmd_comb_terms (a1, a2) ->
+      App (mk_raw "mk_comb", mk_tuple (map (cmd_expr env) [a1; a2]))
+    | Cmd_convert (target, source, a) ->
+        let arg = cmd_expr env a in
+        let expr =
+          match (target, source) with
+          | t1, t2 when t1 = t2 -> arg
+          | Arg_term, Arg_function -> App (Raw "fst", arg)
+          | Arg_term, Arg_theorem -> App (Raw "rand", App (Raw "concl", arg))
+          | Arg_theorem, Arg_term -> App (Raw "REFL", arg)
+          | Arg_theorem, Arg_function -> App (Raw "REFL", App (Raw "fst", arg))
+          | Arg_function, Arg_term -> App (Raw "to_func", arg)
+          | _ -> failwith "Cmd_convert: unsupported conversion" in
+        expr
+    | Cmd_composite cmds ->
+      let _, exprs = cmds_to_exprs env cmds in
+      chain_let exprs
+  in
+  cmds_to_exprs;;
 
 
 type compile_env = {
