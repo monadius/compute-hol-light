@@ -249,8 +249,8 @@ let compile_function env func =
         | _ -> Raw name)
       case1.args in
     let err_pat = 
-      (Raw "_", App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
-    let cs' = List.map (fun (pats, body) -> mk_tuple pats, body) cs in
+      (Raw "_", None, App (Raw "failwith", String (Format.sprintf "No match: %s" func.name))) in
+    let cs' = List.map (fun (pats, body) -> mk_tuple pats, None, body) cs in
     let match_expr = Match (mk_tuple (List.map mk_raw arg_names), cs' @ [err_pat]) in
     let body_expr' = chain_let (get_ty_exprs arg_exprs @ [match_expr]) in
     let body_expr = List.fold_left (add_extra arg_exprs) body_expr' func.extra in
@@ -309,8 +309,8 @@ let compile_rules db rules =
     let pat_names = enum_names "th" n in
     mk_let (String.concat ", " names,
       Match (th_expr,
-        [Raw ("[" ^ String.concat "; " pat_names ^ "]"), mk_tuple (List.map mk_raw pat_names);
-         Raw "_", Raw "failwith \"error\""])) 
+        [Raw ("[" ^ String.concat "; " pat_names ^ "]"), None, mk_tuple (List.map mk_raw pat_names);
+         Raw "_", None, Raw "failwith \"error\""])) 
   in
   let get_var_expr (tm, var_name) =
     let name, ty = dest_var tm in
@@ -611,8 +611,8 @@ let derived_thm_expr derived =
     Format.sprintf "%s, %s" derived.new_name (String.concat ", " derived.eq_names) in
   let match_expr =
     Match(Raw (Format.sprintf "replace_abstractions (%s)" derived.original_name),
-      [mk_tuple [Raw "th"; mk_list_expr vars], mk_tuple (Raw "th" :: vars);
-       Raw "_", Raw (Format.sprintf "failwith \"%s\"" derived.new_name)]) in
+      [mk_tuple [Raw "th"; mk_list_expr vars], None, mk_tuple (Raw "th" :: vars);
+       Raw "_", None, Raw (Format.sprintf "failwith \"%s\"" derived.new_name)]) in
   mk_let (base_pat, match_expr);;
 
 let print_global_defs fmt () =

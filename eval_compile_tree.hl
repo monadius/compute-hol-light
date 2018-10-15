@@ -797,6 +797,6 @@ let compile_eval_tree compile_env tail_rec tm_name (base_tm, tree) =
     if pat = Punused then body
     else
       Match (Raw tm_name, 
-        [Raw (string_of_pat p_names pat), body;
-         Raw "_", Raw "failwith \"bad pattern\""]) in
+        [Raw (string_of_pat p_names pat), None, body;
+         Raw "_", None, Raw "failwith \"bad pattern\""]) in
   expr;;

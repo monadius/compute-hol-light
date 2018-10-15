@@ -1,5 +1,6 @@
 type expr =
-  | Match of expr * (expr * expr) list
+  (* expr, (pattern, guard, body) *)
+  | Match of expr * (expr * expr option * expr) list
   | Try of expr * (expr * expr) list
   | Lambda of expr list * expr
   | Tuple of expr list
@@ -139,20 +140,25 @@ let print_expr =
           Format.fprintf fmt f
             (print_expr false) pat (print_expr true) body)) cases
   | Match (expr, cases) ->
+    let print_guard fmt = function
+      | None -> Format.pp_print_string fmt ""
+      | Some g -> Format.fprintf fmt " when %a" (print_expr false) g in
     let f' = format_of_string "match %a with@,| %a" in
     let f = if flag then "(" ^^ f' ^^ ")" else f' in
     Format.fprintf fmt f
       (print_expr false) expr
       (Format.pp_print_list 
         ~pp_sep:(fun fmt () -> Format.pp_print_string fmt "| ")
-        (fun fmt (pat, body) ->
+        (fun fmt (pat, guard, body) ->
           let f = format_of_string 
             (if is_compound body then
-              "@[<v>%a ->@ %a@]@,"
+              "@[<v>%a%a ->@ %a@]@,"
              else
-              "@[<hv>%a ->@ %a@]@,") in
+              "@[<hv>%a%a ->@ %a@]@,") in
           Format.fprintf fmt f
-            (print_expr false) pat (print_expr true) body)) cases in
+            (print_expr false) pat
+            print_guard guard
+            (print_expr true) body)) cases in
   print_expr false;;
 
 let print_exprs fmt exprs =
