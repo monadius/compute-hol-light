@@ -3,21 +3,23 @@ Arith_options.base := 100;;
 Arith_options.cached := false;;
 
 needs "new_arith/nat_arith.hl";;
-let f_SUC = Nat_arith.nsuc;;
-let f_PRE = Nat_arith.npre;;
-let f_ADD = Nat_arith.nadd;;
-let f_SUB = Nat_arith.nsub;;
-let f_MUL = Nat_arith.nmul;;
-let f_LE tm1 tm2 = fst (Nat_arith.nle tm1 tm2);;
-let f_LT tm1 tm2 = fst (Nat_arith.nlt tm1 tm2);;
-let f_MIN = Nat_arith.nmin;;
-let f_MAX = Nat_arith.nmax;;
+needs "eval_support.hl";;
 
-let f_EQ_num tm1 tm2 = fst (Nat_arith.neq tm1 tm2);;
+let f_SUC a opt = trans_opt opt (Nat_arith.nsuc a);;
+let f_PRE a opt = trans_opt opt (Nat_arith.npre a);;
+let f_ADD a b opt = trans_opt opt (Nat_arith.nadd a b);;
+let f_SUB a b opt = trans_opt opt (Nat_arith.nsub a b);;
+let f_MUL a b opt = trans_opt opt (Nat_arith.nmul a b);;
+let f_LE tm1 tm2 opt = trans_opt opt (fst (Nat_arith.nle tm1 tm2));;
+let f_LT tm1 tm2 opt = trans_opt opt (fst (Nat_arith.nlt tm1 tm2));;
+let f_MIN a b opt = trans_opt opt (Nat_arith.nmin a b);;
+let f_MAX a b opt = trans_opt opt (Nat_arith.nmax a b);;
+
+let f_EQ_num tm1 tm2 opt = trans_opt opt (fst (Nat_arith.neq tm1 tm2));;
 
 let numeral = Nat_arith.replace_numerals;;
 install_user_printer ("nat", Nat_arith.print_nat);;
-(* install_parser ("nat", Nat_arith.parse_nat);; *)
+install_parser ("nat", Nat_arith.parse_nat);;
 
 loadt "eval_compile.hl";;
 
@@ -52,12 +54,12 @@ let f_NOT =
     | _ -> failwith "error"
      in
   let var_t = standardize_tm (mk_var ("t", `:bool`)) in
-  let rec f_NOT tm1 =
+  let rec f_NOT tm1 opt =
     try
       match tm1 with
-      | Comb (Const ("~", _), t) -> INST [t, var_t] NOT_CLAUSES_case1
-      | Const ("T", _) -> NOT_CLAUSES_case2
-      | Const ("F", _) -> NOT_CLAUSES_case3
+      | Comb (Const ("~", _), t) -> trans_opt opt (INST [t, var_t] NOT_CLAUSES_case1)
+      | Const ("T", _) -> trans_opt opt NOT_CLAUSES_case2
+      | Const ("F", _) -> trans_opt opt NOT_CLAUSES_case3
       | _ -> failwith "No match: f_NOT"
     with
     | Failure msg -> eval_error msg "f_NOT" [tm1]
@@ -79,8 +81,8 @@ let f_EQ_num_list =
   let list_case1 = (standardize o prove)(`CONS (x:num) xs = CONS y ys <=> x = y /\ xs = ys`, REWRITE_TAC[injectivity "list"]) and
       list_case2 = (standardize o prove)(`[] = CONS (x:num) xs <=> F`, REWRITE_TAC[distinctness "list"]) and
       list_case3 = (standardize o prove)(`CONS (x:num) xs = [] <=> F`, REWRITE_TAC[distinctness "list"]) in
-  let rec f_EQ tm1 tm2 =
-    if tm1 = tm2 then INST[tm1, var_xs] refl_eq
+  let rec f_EQ tm1 tm2 opt =
+    if tm1 = tm2 then trans_opt opt (INST[tm1, var_xs] refl_eq)
     else
       match (tm1, tm2) with
       | Comb (Comb (Const ("CONS", _), x), xs), Comb (Comb (Const ("CONS", _), y), ys) ->
@@ -89,19 +91,19 @@ let f_EQ_num_list =
         let rhs_eq =
           let op, a2 = dest_comb rhs in
           let op, a1 = dest_comb op in
-          let a1 = f_EQ_num x y in
+          let a1 = f_EQ_num x y None in
           if rand (concl a1) = f_const then
             let and_th = INST[a2, p_var_bool] F_AND in
             TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
           else
-            let a2 = f_EQ xs ys in
+            let a2 = f_EQ xs ys None in
             let and_th = INST[rand (concl a2), p_var_bool] T_AND in
             TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
-        TRANS th rhs_eq
+        trans_opt opt (TRANS th rhs_eq)
       | Const ("NIL", _), Comb (Comb (Const ("CONS", _), x), xs) ->
-        INST[x, var_x; xs, var_xs] list_case2
+        trans_opt opt (INST[x, var_x; xs, var_xs] list_case2)
       | Comb (Comb (Const ("CONS", _), x), xs), Const ("NIL", _) ->
-        INST[x, var_x; xs, var_xs] list_case3
+        trans_opt opt (INST[x, var_x; xs, var_xs] list_case3)
       | _ -> failwith "f_EQ_num_list"
   in
   f_EQ;;
@@ -115,22 +117,22 @@ let f_EQ_face =
   let var_f = standardize_tm `f:face` in
   let var_xs = standardize_tm `xs:(num)list` in
   let var_ys = standardize_tm `ys:(num)list` in
-  let f_EQ tm1 tm2 =
-    if tm1 = tm2 then INST[tm1, var_f] refl_eq
+  let f_EQ tm1 tm2 opt =
+    if tm1 = tm2 then trans_opt opt (INST[tm1, var_f] refl_eq)
     else
       match (tm1, tm2) with
       | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
         let th = INST[xs, var_xs; ys, var_ys] face_case1 in
-        let rhs_eq = f_EQ_num_list xs ys in
-        TRANS th rhs_eq
+        let rhs_eq = f_EQ_num_list xs ys None in
+        trans_opt opt (TRANS th rhs_eq)
       | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
         let th = INST[xs, var_xs; ys, var_ys] face_case2 in
-        let rhs_eq = f_EQ_num_list xs ys in
-        TRANS th rhs_eq
+        let rhs_eq = f_EQ_num_list xs ys None in
+        trans_opt opt (TRANS th rhs_eq)
       | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
-        INST[xs, var_xs; ys, var_ys] face_case3
+        trans_opt opt (INST[xs, var_xs; ys, var_ys] face_case3)
       | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
-        INST[xs, var_xs; ys, var_ys] face_case4
+        trans_opt opt (INST[xs, var_xs; ys, var_ys] face_case4)
       | _ -> failwith "f_EQ_face"
   in
   f_EQ;;
@@ -140,12 +142,12 @@ let f_EQ_bool =
       ff_eq = (standardize o TAUT) `F = F <=> T` and
       tf_eq = (standardize o TAUT) `T = F <=> F` and
       ft_eq = (standardize o TAUT) `F = T <=> F` in
-  let f_EQ tm1 tm2 =
+  let f_EQ tm1 tm2 opt =
     match tm1 with
     | Const ("T", _) ->
-      (match tm2 with Const ("T", _) -> tt_eq | Const ("F", _) -> tf_eq | _ -> failwith "error")
+      (match tm2 with Const ("T", _) -> trans_opt opt tt_eq | Const ("F", _) -> trans_opt opt tf_eq | _ -> failwith "error")
     | Const ("F", _) ->
-      (match tm2 with Const ("T", _) -> ft_eq | Const ("F", _) -> ff_eq | _ -> failwith "error")
+      (match tm2 with Const ("T", _) -> trans_opt opt ft_eq | Const ("F", _) -> trans_opt opt ff_eq | _ -> failwith "error")
     | _ -> failwith "error"
   in
   f_EQ;;
@@ -160,8 +162,8 @@ let f_EQ_num_num_num =
   let var_y = standardize_tm `y:num` in
   let var_z = standardize_tm `z:num` in
   let pair_eq = (standardize o prove)(`(a:num,b:num,c:num) = (x,y,z) <=> a = x /\ (b = y /\ c = z)`, REWRITE_TAC[PAIR_EQ]) in
-  let f_EQ tm1 tm2 =
-    if tm1 = tm2 then INST[tm1, var_p] refl_eq
+  let f_EQ tm1 tm2 opt =
+    if tm1 = tm2 then trans_opt opt (INST[tm1, var_p] refl_eq)
     else
       match (tm1, tm2) with
       | Comb (Comb (Const (",", _), a), Comb (Comb (Const (",", _), b), c)), Comb (Comb (Const (",", _), x), Comb (Comb (Const (",", _), y), z)) ->
@@ -170,14 +172,14 @@ let f_EQ_num_num_num =
         let rhs_eq =
           let op, a2 = dest_comb rhs in
           let op, a1 = dest_comb op in
-          let a1_eq = f_EQ_num a x in
+          let a1_eq = f_EQ_num a x None in
           if rand (concl a1_eq) = true_tm then
             let a2_eq =
               let op, a2 = dest_comb a2 in
               let op, a1 = dest_comb op in
-              let a1_eq = f_EQ_num b y in
+              let a1_eq = f_EQ_num b y None in
               if rand (concl a1_eq) = true_tm then
-                let a2_eq = f_EQ_num c z in
+                let a2_eq = f_EQ_num c z None in
                 let and_th = INST[rand (concl a2_eq), p_var_bool] T_AND in
                 TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) and_th
               else
@@ -188,7 +190,7 @@ let f_EQ_num_num_num =
           else
             let and_th = INST[a2, p_var_bool] F_AND in
             TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) and_th in
-        TRANS th rhs_eq
+        trans_opt opt (TRANS th rhs_eq)
       | _ -> failwith "f_EQ_num_num_num"
   in
   f_EQ;;
@@ -305,7 +307,7 @@ let f_EQ =
         INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case4
       | Const ("Final", _), Const ("Nonfinal", _) -> facetype_case1
       | Const ("Nonfinal", _), Const ("Final", _) -> facetype_case2
-      | _ -> f_EQ_num tm1 tm2
+      | _ -> f_EQ_num tm1 tm2 None
     with
     | Failure msg -> eval_error msg "f_EQ" [tm1; tm2]
     | Eval_error err -> eval_error_propagate err "f_EQ" [tm1; tm2]

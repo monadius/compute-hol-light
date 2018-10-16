@@ -229,6 +229,7 @@ loadt "out_2.hl";;
 (* 2.649s with Hashtbl_memo *)
 (* 2.688s with Assoc_memo *)
 (* 2.481s with eval_compile_tree *)
+(* 2.574s with tail_rec (Assoc_memo) *)
 (* reset_core_counters() *)
 let () = ();;
 let () =
@@ -239,13 +240,15 @@ let () =
   clear_lru_memos();
   clear_assoc_memos();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
+test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `100`)) None;;
 
 (* 397s with Weak_memo *)
 (* 255s with Hashtbl_memo *)
 (* 262s with Assoc_memo *)
 (* 263s with Assoc_lru 10000, 2 *)
+(* 230s with tail_rec (Assoc_memo) *)
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `10000`);;
-test 1 (f_tameEnumFilterBounded `0`) `100`;;
+test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `10000`)) None;;
 
 (* 518s with Hashtbl_memo *)
 (* 517s without memo for removeKeyList *)
@@ -253,8 +256,10 @@ test 1 (f_tameEnumFilterBounded `0`) `100`;;
 (* 594s with Assoc_lru 10000, 5*)
 (* 597s with Assoc_lru 10000, 2*)
 (* 478s with tail rec main loop with Assoc *)
-(* 451s with tail rec, Assoc (another run) *)
+(* 451s with tail rec main loop, Assoc (another run) *)
+(* 468s with tail_rec, Assoc *)
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `20000`);;
+test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `20000`)) None;;
 
 let f_worklist_tree_bounded_graph_num_num_list_list_tries =
   let worklist_tree_bounded_ALT_case1, worklist_tree_bounded_ALT_case2 =
@@ -347,6 +352,7 @@ let f_tameEnumFilterBounded =
 (* 100000: 2908s (non-exclusive) *)
 (* all: 11493s *)
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100000`);;
+test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `100000`)) None;;
 
 let res, tm = it;;
 
