@@ -19,300 +19,60 @@ let f_EQ_num tm1 tm2 opt = trans_opt opt (fst (Nat_arith.neq tm1 tm2));;
 
 let numeral = Nat_arith.replace_numerals;;
 install_user_printer ("nat", Nat_arith.print_nat);;
-install_parser ("nat", Nat_arith.parse_nat);;
+(* install_parser ("nat", Nat_arith.parse_nat);; *)
 
 loadt "eval_compile.hl";;
 
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;
 
+let NOT_CLAUSES' = prove(`~T = F /\ ~F = T`, REWRITE_TAC[]);;
+
+let EQ_BOOL = prove
+  (`(T = T <=> T) /\
+    (F = F <=> T) /\
+    (T = F <=> F) /\
+    (F = T <=> F)`,
+  REWRITE_TAC[]);;
+
+let EQ_PAIR = prove
+  (`(xy:(A#B) = xy <=> T) /\
+    ((x:A, y:B) = (a, b) <=> x = a /\ y = b)`,
+  REWRITE_TAC[PAIR_EQ]);;
+
+let EQ_LIST = prove
+  (`(xs:(A)list = xs <=> T) /\
+    ([] = CONS x xs <=> F) /\
+    (CONS x xs = [] <=> F) /\
+    (CONS x xs = CONS y ys <=> x = y /\ xs = ys)`,
+  REWRITE_TAC[injectivity "list"; distinctness "list"]);;
+
+let EQ_FACE = prove
+  (`(f:face = f <=> T) /\
+    (Face xs Final = Face ys Final <=> xs = ys) /\
+    (Face xs Nonfinal = Face ys Nonfinal <=> xs = ys) /\
+    (Face xs Final = Face ys Nonfinal <=> F) /\
+    (Face xs Nonfinal = Face ys Final <=> F)`,
+  REWRITE_TAC[injectivity "face"; distinctness "facetype"]);;
+
 let tame_default_db ~eliminate_abs () =
   let db = empty_db ~eliminate_abs "tame" in
   List.iter (fun c -> set_rule db c) [
-    `(=):num->num->bool`; `(=):(num)list->(num)list->bool`; `(=):face->face->bool`;
-    `(=):num#num#num->num#num#num->bool`;
-    `(=):bool->bool->bool`;
-    `(=):A->A->bool`;
+    `(=):num->num->bool`;
+    (* `(=):A->A->bool`; *)
     `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
-    `~`;
+  ];
+  ignore @@ add_thms db [
+    "NOT_CLAUSES'", NOT_CLAUSES', [];
+    "EQ_BOOL", EQ_BOOL, [];
+    "EQ_PAIR", EQ_PAIR, [];
+    "EQ_LIST", EQ_LIST, [];
+    "EQ_FACE", EQ_FACE, [];
   ];
   add_extra_rule db ("Nat_arith.REPLACE_NUMERALS", Nat_arith.REPLACE_NUMERALS);
   List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
   db;;
 
-let true_tm = standardize_tm `T`;;
-let p_var_bool = `P: bool`;;
-let T_AND = TAUT `T /\ P <=> P` and
-    F_AND = TAUT `F /\ P <=> F` and
-    T_OR = TAUT `T \/ P <=> T` and
-    F_OR = TAUT `F \/ P <=> P`;;
-
-let f_NOT =
-  let NOT_CLAUSES_case1, NOT_CLAUSES_case2, NOT_CLAUSES_case3 =
-    match split_thm NOT_CLAUSES with
-    | [th1; th2; th3] -> (th1, th2, th3)
-    | _ -> failwith "error"
-     in
-  let var_t = standardize_tm (mk_var ("t", `:bool`)) in
-  let rec f_NOT tm1 opt =
-    try
-      match tm1 with
-      | Comb (Const ("~", _), t) -> trans_opt opt (INST [t, var_t] NOT_CLAUSES_case1)
-      | Const ("T", _) -> trans_opt opt NOT_CLAUSES_case2
-      | Const ("F", _) -> trans_opt opt NOT_CLAUSES_case3
-      | _ -> failwith "No match: f_NOT"
-    with
-    | Failure msg -> eval_error msg "f_NOT" [tm1]
-    | Eval_error err -> eval_error_propagate err "f_NOT" [tm1]
-     in
-  f_NOT;;
-
-(* let f_EQ_num =
-  let const = standardize_tm `(=):num->num->bool` in
-  fun t1 t2 -> NUM_EQ_CONV (mk_comb (mk_comb (const, t1), t2));; *)
-
-let f_EQ_num_list =
-  let refl_eq = (standardize o prove)(`xs:(num)list = xs <=> T`, REWRITE_TAC[]) in
-  let f_const = standardize_tm `F` in
-  let var_x = standardize_tm `x:num` in
-  let var_y = standardize_tm `y:num` in
-  let var_xs = standardize_tm `xs:(num)list` in
-  let var_ys = standardize_tm `ys:(num)list` in
-  let list_case1 = (standardize o prove)(`CONS (x:num) xs = CONS y ys <=> x = y /\ xs = ys`, REWRITE_TAC[injectivity "list"]) and
-      list_case2 = (standardize o prove)(`[] = CONS (x:num) xs <=> F`, REWRITE_TAC[distinctness "list"]) and
-      list_case3 = (standardize o prove)(`CONS (x:num) xs = [] <=> F`, REWRITE_TAC[distinctness "list"]) in
-  let rec f_EQ tm1 tm2 opt =
-    if tm1 = tm2 then trans_opt opt (INST[tm1, var_xs] refl_eq)
-    else
-      match (tm1, tm2) with
-      | Comb (Comb (Const ("CONS", _), x), xs), Comb (Comb (Const ("CONS", _), y), ys) ->
-        let th = INST [ys, var_ys; xs, var_xs; y, var_y; x, var_x] list_case1 in
-        let rhs = rand (concl th) in
-        let rhs_eq =
-          let op, a2 = dest_comb rhs in
-          let op, a1 = dest_comb op in
-          let a1 = f_EQ_num x y None in
-          if rand (concl a1) = f_const then
-            let and_th = INST[a2, p_var_bool] F_AND in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
-          else
-            let a2 = f_EQ xs ys None in
-            let and_th = INST[rand (concl a2), p_var_bool] T_AND in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
-        trans_opt opt (TRANS th rhs_eq)
-      | Const ("NIL", _), Comb (Comb (Const ("CONS", _), x), xs) ->
-        trans_opt opt (INST[x, var_x; xs, var_xs] list_case2)
-      | Comb (Comb (Const ("CONS", _), x), xs), Const ("NIL", _) ->
-        trans_opt opt (INST[x, var_x; xs, var_xs] list_case3)
-      | _ -> failwith "f_EQ_num_list"
-  in
-  f_EQ;;
-
-let f_EQ_face =
-  let refl_eq = (standardize o prove)(`f:face = f <=> T`, REWRITE_TAC[]) in
-  let face_case1 = (standardize o prove)(`Face xs Final = Face ys Final <=> xs = ys`, REWRITE_TAC[injectivity "face"]) and
-      face_case2 = (standardize o prove)(`Face xs Nonfinal = Face ys Nonfinal <=> xs = ys`, REWRITE_TAC[injectivity "face"]) and
-      face_case3 = (standardize o prove)(`Face xs Final = Face ys Nonfinal <=> F`, REWRITE_TAC[injectivity "face"; distinctness "facetype"]) and
-      face_case4 = (standardize o prove)(`Face xs Nonfinal = Face ys Final <=> F`, REWRITE_TAC[injectivity "face"; distinctness "facetype"]) in
-  let var_f = standardize_tm `f:face` in
-  let var_xs = standardize_tm `xs:(num)list` in
-  let var_ys = standardize_tm `ys:(num)list` in
-  let f_EQ tm1 tm2 opt =
-    if tm1 = tm2 then trans_opt opt (INST[tm1, var_f] refl_eq)
-    else
-      match (tm1, tm2) with
-      | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
-        let th = INST[xs, var_xs; ys, var_ys] face_case1 in
-        let rhs_eq = f_EQ_num_list xs ys None in
-        trans_opt opt (TRANS th rhs_eq)
-      | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
-        let th = INST[xs, var_xs; ys, var_ys] face_case2 in
-        let rhs_eq = f_EQ_num_list xs ys None in
-        trans_opt opt (TRANS th rhs_eq)
-      | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
-        trans_opt opt (INST[xs, var_xs; ys, var_ys] face_case3)
-      | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
-        trans_opt opt (INST[xs, var_xs; ys, var_ys] face_case4)
-      | _ -> failwith "f_EQ_face"
-  in
-  f_EQ;;
-
-let f_EQ_bool =
-  let tt_eq = (standardize o TAUT) `T = T <=> T` and
-      ff_eq = (standardize o TAUT) `F = F <=> T` and
-      tf_eq = (standardize o TAUT) `T = F <=> F` and
-      ft_eq = (standardize o TAUT) `F = T <=> F` in
-  let f_EQ tm1 tm2 opt =
-    match tm1 with
-    | Const ("T", _) ->
-      (match tm2 with Const ("T", _) -> trans_opt opt tt_eq | Const ("F", _) -> trans_opt opt tf_eq | _ -> failwith "error")
-    | Const ("F", _) ->
-      (match tm2 with Const ("T", _) -> trans_opt opt ft_eq | Const ("F", _) -> trans_opt opt ff_eq | _ -> failwith "error")
-    | _ -> failwith "error"
-  in
-  f_EQ;;
-
-let f_EQ_num_num_num =
-  let refl_eq = (standardize o prove)(`p:(num#num#num) = p <=> T`, REWRITE_TAC[]) in
-  let var_p = standardize_tm `p:num#num#num` in
-  let var_a = standardize_tm `a:num` in
-  let var_b = standardize_tm `b:num` in
-  let var_c = standardize_tm `c:num` in
-  let var_x = standardize_tm `x:num` in
-  let var_y = standardize_tm `y:num` in
-  let var_z = standardize_tm `z:num` in
-  let pair_eq = (standardize o prove)(`(a:num,b:num,c:num) = (x,y,z) <=> a = x /\ (b = y /\ c = z)`, REWRITE_TAC[PAIR_EQ]) in
-  let f_EQ tm1 tm2 opt =
-    if tm1 = tm2 then trans_opt opt (INST[tm1, var_p] refl_eq)
-    else
-      match (tm1, tm2) with
-      | Comb (Comb (Const (",", _), a), Comb (Comb (Const (",", _), b), c)), Comb (Comb (Const (",", _), x), Comb (Comb (Const (",", _), y), z)) ->
-        let th = INST [a, var_a; b, var_b; c, var_c; x, var_x; y, var_y; z, var_z] pair_eq in
-        let rhs = rand (concl th) in
-        let rhs_eq =
-          let op, a2 = dest_comb rhs in
-          let op, a1 = dest_comb op in
-          let a1_eq = f_EQ_num a x None in
-          if rand (concl a1_eq) = true_tm then
-            let a2_eq =
-              let op, a2 = dest_comb a2 in
-              let op, a1 = dest_comb op in
-              let a1_eq = f_EQ_num b y None in
-              if rand (concl a1_eq) = true_tm then
-                let a2_eq = f_EQ_num c z None in
-                let and_th = INST[rand (concl a2_eq), p_var_bool] T_AND in
-                TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) and_th
-              else
-                let and_th = INST[a2, p_var_bool] F_AND in
-                TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) and_th in
-            let and_th = INST[rand (concl a2_eq), p_var_bool] T_AND in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), a2_eq)) and_th
-          else
-            let and_th = INST[a2, p_var_bool] F_AND in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1_eq), REFL a2)) and_th in
-        trans_opt opt (TRANS th rhs_eq)
-      | _ -> failwith "f_EQ_num_num_num"
-  in
-  f_EQ;;
-
-let eq_types = ref [];;
-
-(* Need to include additional cases *)
-let f_EQ =
-  let num_eq = `(=):num->num->bool` in
-  let var_a_bool = `a:bool` in
-  let var_xs_num_list = `xs:(num)list` in
-  let var_ys_num_list = `ys:(num)list` in
-  let f_const = `F` in
-  let f_and = prove(`F /\ a <=> F`, REWRITE_TAC[]) in
-  let t_and = prove(`T /\ a <=> a`, REWRITE_TAC[]) in
-  let tf_eq = TAUT `T = F <=> F` and
-      ft_eq = TAUT `F = T <=> F` in
-  let refl_eq = prove(`x:A = x <=> T`, REWRITE_TAC[]) in
-  let pair_eq = prove(`x:A,y:B = a,b <=> x = a /\ y = b`, REWRITE_TAC[PAIR_EQ]) in
-  let option_case1 = prove(`SOME (x:A) = SOME y <=> x = y`, REWRITE_TAC[injectivity "option"]) and
-      option_case2 = prove(`NONE = SOME (x:A) <=> F`, REWRITE_TAC[distinctness "option"]) and
-      option_case3 = prove(`SOME (x:A) = NONE <=> F`, REWRITE_TAC[distinctness "option"]) in
-  let list_case1 = prove(`CONS (x:A) xs = CONS y ys <=> x = y /\ xs = ys`, REWRITE_TAC[injectivity "list"]) and
-      list_case2 = prove(`[] = CONS (x:A) xs <=> F`, REWRITE_TAC[distinctness "list"]) and
-      list_case3 = prove(`CONS (x:A) xs = [] <=> F`, REWRITE_TAC[distinctness "list"]) in
-  let face_case1 = prove(`Face xs Final = Face ys Final <=> xs = ys`, REWRITE_TAC[injectivity "face"]) and
-      face_case2 = prove(`Face xs Nonfinal = Face ys Nonfinal <=> xs = ys`, REWRITE_TAC[injectivity "face"]) and
-      face_case3 = prove(`Face xs Final = Face ys Nonfinal <=> F`, REWRITE_TAC[injectivity "face"; distinctness "facetype"]) and
-      face_case4 = prove(`Face xs Nonfinal = Face ys Final <=> F`, REWRITE_TAC[injectivity "face"; distinctness "facetype"]) in
-  let facetype_case1 = prove(`Final = Nonfinal <=> F`, REWRITE_TAC[distinctness "facetype"]) and
-      facetype_case2 = prove(`Nonfinal = Final <=> F`, REWRITE_TAC[distinctness "facetype"])
-  in
-  let rec f_EQ tm1 tm2 =
-    eq_types := type_of tm1 :: !eq_types;
-    try
-      match (tm1, tm2) with
-      | Comb (Const ("NUMERAL", _), _), Comb (Const ("NUMERAL", _), _) ->
-        NUM_EQ_CONV (mk_comb (mk_comb (num_eq, tm1), tm2))
-      | x, y when x = y ->
-        let ty = type_of x in
-        let var_x = mk_var ("x", ty) in
-        INST[x, var_x] (INST_TYPE [ty, aty] refl_eq)
-      | Const ("T", _), Const ("F", _) -> tf_eq
-      | Const ("F", _), Const ("T", _) -> ft_eq
-      | Comb (Comb (Const (",", Tyapp ("fun", [xty; Tyapp ("fun", [yty; _])])), x), y), Comb (Comb (Const (",", _), a), b) ->
-        let var_x = mk_var ("x", xty) in
-        let var_y = mk_var ("y", yty) in
-        let var_a = mk_var ("a", xty) in
-        let var_b = mk_var ("b", yty) in
-        let th = INST [b, var_b; a, var_a; y, var_y; x, var_x] (INST_TYPE [xty, aty; yty, bty] pair_eq) in
-        let rhs = rand (concl th) in
-        let rhs_eq =
-          let op, a2 = dest_comb rhs in
-          let op, a1 = dest_comb op in
-          let a1 = f_EQ x a in
-          if rand (concl a1) = f_const then
-            let and_th = INST[a2, var_a_bool] f_and in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
-          else
-            let a2 = f_EQ y b in
-            let and_th = INST[rand (concl a2), var_a_bool] t_and in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
-        TRANS th rhs_eq
-      | Comb (Const ("SOME", Tyapp ("fun", [ty; _])), x), Comb (Const ("SOME", _), y) ->
-        let var_x = mk_var ("x", ty) in
-        let var_y = mk_var ("y", ty) in
-        let th = INST [x, var_x; y, var_y] (INST_TYPE [ty, aty] option_case1) in
-        let rhs_eq = f_EQ x y in
-        TRANS th rhs_eq
-      | Const ("NONE", Tyapp ("option", [ty])), Comb (Const ("SOME", _), x) ->
-        let var_x = mk_var ("x", ty) in
-        INST[x, var_x] (INST_TYPE [ty, aty] option_case2)
-      | Comb (Const ("SOME", _), x), Const ("NONE", Tyapp ("option", [ty])) ->
-        let var_x = mk_var ("x", ty) in
-        INST[x, var_x] (INST_TYPE [ty, aty] option_case3)
-      | Comb (Comb (Const ("CONS", Tyapp ("fun", [xty; Tyapp ("fun", [xsty; _])])), x), xs), Comb (Comb (Const ("CONS", _), y), ys) ->
-        let var_x = mk_var ("x", xty) in
-        let var_y = mk_var ("y", xty) in
-        let var_xs = mk_var ("xs", xsty) in
-        let var_ys = mk_var ("ys", xsty) in
-        let th = INST [ys, var_ys; xs, var_xs; y, var_y; x, var_x] (INST_TYPE [xty, aty] list_case1) in
-        let rhs = rand (concl th) in
-        let rhs_eq =
-          let op, a2 = dest_comb rhs in
-          let op, a1 = dest_comb op in
-          let a1 = f_EQ x y in
-          if rand (concl a1) = f_const then
-            let and_th = INST[a2, var_a_bool] f_and in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), REFL a2)) and_th
-          else
-            let a2 = f_EQ xs ys in
-            let and_th = INST[rand (concl a2), var_a_bool] t_and in
-            TRANS (MK_COMB (MK_COMB (REFL op, a1), a2)) and_th in
-        TRANS th rhs_eq
-      | Const ("NIL", (Tyapp ("list", [xty]) as xsty)), Comb (Comb (Const ("CONS", _), x), xs) ->
-        let var_x = mk_var ("x", xty) in
-        let var_xs = mk_var ("xs", xsty) in
-        INST[x, var_x; xs, var_xs] (INST_TYPE [xty, aty] list_case2)
-      | Comb (Comb (Const ("CONS", _), x), xs), Const ("NIL", (Tyapp ("list", [xty]) as xsty)) ->
-        let var_x = mk_var ("x", xty) in
-        let var_xs = mk_var ("xs", xsty) in
-        INST[x, var_x; xs, var_xs] (INST_TYPE [xty, aty] list_case3)
-      | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
-        let th = INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case1 in
-        let rhs_eq = f_EQ xs ys in
-        TRANS th rhs_eq
-      | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
-        let th = INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case2 in
-        let rhs_eq = f_EQ xs ys in
-        TRANS th rhs_eq
-      | Comb (Comb (Const ("Face", _), xs), Const ("Final", _)), Comb (Comb (Const ("Face", _), ys), Const ("Nonfinal", _)) ->
-        INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case3
-      | Comb (Comb (Const ("Face", _), xs), Const ("Nonfinal", _)), Comb (Comb (Const ("Face", _), ys), Const ("Final", _)) ->
-        INST[xs, var_xs_num_list; ys, var_ys_num_list] face_case4
-      | Const ("Final", _), Const ("Nonfinal", _) -> facetype_case1
-      | Const ("Nonfinal", _), Const ("Final", _) -> facetype_case2
-      | _ -> f_EQ_num tm1 tm2 None
-    with
-    | Failure msg -> eval_error msg "f_EQ" [tm1; tm2]
-    | Eval_error err -> eval_error_propagate err "f_EQ" [tm1; tm2]
-     in
-  f_EQ;;
 
 module Type_cmp = struct
   type t = hol_type
