@@ -1,4 +1,4 @@
-needs "compute.hl";;
+needs "compute_hol4.hl";;
 
 let le_nat_def = define
   `le_nat 0 n = T

@@ -1,4 +1,4 @@
-needs "compute.hl";;
+needs "compute_hol4.hl";;
 
 let rws =
   let rws = bool_compset() in

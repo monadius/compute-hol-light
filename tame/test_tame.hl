@@ -1,7 +1,8 @@
+(* load_path := "/Users/monad/Work/git/compute-hol-light" :: !load_path;; *)
 (* load_path := "/Users/monad/Work/git/formal_ineqs" :: !load_path;; *)
-needs "tame_defs.hl";;
-needs "tame_defs_unrolled.hl";;
-loadt "test_tame_support.hl";;
+needs "tame/tame_defs.hl";;
+needs "tame/tame_defs_unrolled.hl";;
+loadt "tame/test_tame_support.hl";;
 
 let rules = [
   "APPEND_UNROLL8", APPEND_UNROLL8, [];
