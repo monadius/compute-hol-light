@@ -1,5 +1,7 @@
 needs "compute_hol4.hl";;
 
+open Compute;;
+
 let rws =
   let rws = bool_compset() in
   add_thms [ARITH] rws; rws;;

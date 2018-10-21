@@ -1,3 +1,36 @@
+module type Compute_sig = sig
+  exception Dead_code of string
+  exception No_match
+
+  type 'a fterm
+  type db
+  type compset
+  type transform = private Conversion of (term -> thm * db fterm) | Rrules of thm list
+  val new_compset : thm list -> compset
+  val add_thms : thm list -> compset -> unit
+  val listItems : compset -> (string * transform list) list
+  val add_conv : term * int * conv -> compset -> unit
+  val bool_compset : unit -> compset
+  val the_compset : compset
+  val add_funs : thm list -> unit
+  val add_convs : (term * int * conv) list -> unit
+  val del_consts : term list -> unit
+  val del_funs : thm list -> unit
+
+  val CBV_CONV : compset -> term -> thm
+  val WEAK_CBV_CONV : compset -> term -> thm
+
+  val EVAL_CONV : conv
+  val EVAL_RULE : thm -> thm
+  val EVAL_TAC : tactic
+
+  val RESTR_EVAL_CONV : term list -> conv
+  val RESTR_EVAL_RULE : term list -> thm -> thm
+  val RESTR_EVAL_TAC : term list -> tactic
+end;;
+
+module Compute : Compute_sig = struct
+
 let with_flag (flag, b) f x =
   let fval = !flag in
   let () = flag := b in
@@ -264,7 +297,7 @@ let partition_skip skip args =
  * according to the width of their lhs.
  *---------------------------------------------------------------------------*)
 
-type comp_rws = 
+type compset = 
     Rws of (string, (db * int option) ref) Hashtbl.t;;
 
 let empty_rws () = Rws (Hashtbl.create 100);;
@@ -548,7 +581,6 @@ let auto_import_definitions = ref true;;
 
 (* re-exporting types from clauses *)
 
-type compset = comp_rws;;
 let new_compset = from_list;;
 let listItems = deplist;;
 
@@ -727,3 +759,5 @@ let RESTR_EVAL_CONV clist =
 
 let RESTR_EVAL_TAC = CONV_TAC o RESTR_EVAL_CONV;;
 let RESTR_EVAL_RULE = CONV_RULE o RESTR_EVAL_CONV;;
+
+end;;
