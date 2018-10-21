@@ -199,8 +199,8 @@ let () =
   (* set_rule db `(=):A->A->bool`; *)
   (* set_extra_for_all db Extra_arg_list; *)
   (* write_rules_names db "out.hl" const_names *)
-  write_rules_consts db "out_2.hl" consts;;
-loadt "out_2.hl";;
+  write_rules_consts db "tame/out.hl" consts;;
+loadt "tame/out.hl";;
 
 (* 40.714s *)
 (* original: 0.0171s *)
