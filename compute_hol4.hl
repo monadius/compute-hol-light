@@ -1,24 +1,31 @@
 module type Compute_sig = sig
-  exception Dead_code of string
-  exception No_match
-
-  type 'a fterm
-  type db
   type compset
-  type transform = private Conversion of (term -> thm * db fterm) | Rrules of thm list
+
+  val monitoring : (term -> bool) option ref
+  val stoppers : (term -> bool) option ref
+
   val new_compset : thm list -> compset
-  val add_thms : thm list -> compset -> unit
-  val listItems : compset -> (string * transform list) list
-  val add_conv : term * int * conv -> compset -> unit
   val bool_compset : unit -> compset
-  val the_compset : compset
-  val add_funs : thm list -> unit
-  val add_convs : (term * int * conv) list -> unit
-  val del_consts : term list -> unit
-  val del_funs : thm list -> unit
+
+  val add_thms : thm list -> compset -> unit
+  val add_conv : term * int * conv -> compset -> unit
+  val set_skip : compset -> term -> int option -> unit
+
+  val scrub_const : compset -> term -> unit
+  val scrub_thms : thm list -> compset -> unit
+
+  val lazyfy_thm : thm -> thm
+  val strictify_thm : thm -> thm
 
   val CBV_CONV : compset -> term -> thm
   val WEAK_CBV_CONV : compset -> term -> thm
+
+  val the_compset : compset
+  val add_funs : thm list -> unit
+  val add_convs : (term * int * conv) list -> unit
+
+  val del_consts : term list -> unit
+  val del_funs : thm list -> unit
 
   val EVAL_CONV : conv
   val EVAL_RULE : thm -> thm
@@ -27,6 +34,12 @@ module type Compute_sig = sig
   val RESTR_EVAL_CONV : term list -> conv
   val RESTR_EVAL_RULE : term list -> thm -> thm
   val RESTR_EVAL_TAC : term list -> tactic
+
+  type 'a fterm
+  type db
+  type transform = private Conversion of (term -> thm * db fterm) | Rrules of thm list
+
+  val listItems : compset -> (string * transform list) list
 end;;
 
 module Compute : Compute_sig = struct
@@ -313,7 +326,7 @@ let add_in_db_upd rws (name, arity, hcst) act =
   let { contents = db, sk } as rl = assoc_clause rws name in
   rl := add_in_db (arity, hcst, act, db), sk;;
 
-let set_skip (Rws htbl as rws) p sk =
+let set_skip_name (Rws htbl as rws) p sk =
   let { contents = db, _ } as rl = assoc_clause rws p in
   rl := db, sk;;
 
@@ -711,10 +724,10 @@ let extern_of_conv rws conv tm =
 let add_conv (cst, arity, conv) rws =
   add_extern (cst, arity, extern_of_conv rws conv) rws;;
 
-let set_skip2 compset c opt =
+let set_skip compset c opt =
   try
     let name, _ = dest_const c in
-    set_skip compset name opt
+    set_skip_name compset name opt
   with _ -> failwith "set_skip";;
 
 
@@ -730,7 +743,7 @@ let bool_redns =
 
 let bool_compset () =
   let base = from_list bool_redns in
-  let () = set_skip2 base `COND: bool -> A -> A -> A` None in
+  let () = set_skip base `COND: bool -> A -> A -> A` None in
           (* change last parameter to SOME 1 to stop CBV_CONV looking at
              conditionals' branches before the guard is fully true or false *)
   base;;
