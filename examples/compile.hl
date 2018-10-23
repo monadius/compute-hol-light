@@ -1,0 +1,126 @@
+(* Make sure that load_path contains a path to eval_compile.hl *)
+(* load_path := "path to eval_*.hl" :: !load_path *)
+needs "eval_compile.hl";;
+
+(*****************************************************************************)
+(* Basic usage                                                               *)
+(*****************************************************************************)
+
+(* The compiler workflow is the following: 
+  1) a database with equality theorems;
+  2) some or all rules from this database are compiled
+     into OCaml code which can be saved in a file.
+  Several optimizations are available. *)
+
+(* Let's create an empty database *)
+let db = empty_db "first";;
+
+(* The only argument of empty_db is the name of a new database *)
+
+(* Theorems are added with add_thms *)
+add_thms db [
+  "ARITH_MULT", ARITH_MULT, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+];;
+
+(* The first argument of add_thms is a database. The second argument
+is a list of theorems. Each element of this list is a triple:
+OCaml name of a theorem, theorem itself, a list of constants for
+manual instantiation of types (will be explained later). *)
+
+(* add_thms mutates the db but it also returns db. So it is convenient
+to combine two steps above as follows *)
+let db = add_thms (empty_db "first") [
+  "ARITH_MULT", ARITH_MULT, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+];;
+
+(* Now we can compile and save compilation results in a file *)
+(* Note: it may be necessary to change the name and/or path of 
+the output file on your machine *)
+write_rules_names db "examples/out_first.hl" ["SUC"; "+"; "*"];;
+
+(* We can load the created file *)
+loadt "examples/out_first.hl";;
+
+(* Compiled functions are called "f_..." where ... is a name of the corresponding
+constants. Some names are not supported by OCaml so they are modified.
+For instance, "+" becomes "ADD", "*" becomes "MUL", etc. *)
+
+(* Returns |- SUC 30 = 31 *)
+f_SUC `30` None;;
+(* Returns |- 23 + 44 = 67 *)
+f_ADD `23` `44` None;;
+(* Returns |- 23 * 33 = 759 *)
+f_MUL `23` `33` None;;
+
+(* Compiled rules are called with terms as arguments and they return equality
+theorems. The last argument of compiled rules is an optional theorem.
+This argument is important for implementing tail call elimination for
+tail recursive definitions. It is enough to call compiled rules with None to
+get final results. *)
+
+(* Compiled rules only accept terms which are in normalized forms recongnized 
+by underlying equality theorems *)
+
+(* Failure: No match *)
+f_SUC `1 + 2` None;;
+(* This argument is acceptable *)
+f_SUC `BIT0 (BIT1 _0)` None;;
+(* This also works *)
+f_SUC `BIT0 n` None;;
+(* And this fails because f_SUC recursively calls itself for `n` *)
+f_SUC `BIT1 n` None;;
+
+(* write_rules_names compiles rules corresponding to the given constant
+names and saves compiled code in a file. 
+All compiled rules are written in the same order as in the list of 
+constant names. The rule for "+" depends on the rule for "SUC" so "+" 
+must follow "SUC" in the list of names.
+It may be difficult to keep track of dependencies manually. Moreover,
+some rules are mutually recursive and it is impossible to specify
+a linear order for such rules.
+So it is recommended to use a special function for computing
+dependencies before compiling and writing results into a file. *)
+
+(* Add ARITH_GE and ARITH_GT which are mutually recursive *)
+add_thms db [
+  "ARITH_GE", ARITH_GE, [];
+  "ARITH_GT", ARITH_GT, [];
+];;
+
+(* We can try to use write_rules_names *)
+write_rules_names db "examples/out_first.hl" [">"; ">="; "SUC"];;
+
+(* But the output file cannot be loaded: f_GT calls f_GE which is
+defined later in the same file *)
+loadt "examples/out_first.hl";;
+
+(* One solution is to use a more general function write_rules_consts *)
+write_rules_consts db "examples/out_first.hl" [[`>`; `>=`]; [`SUC`]];;
+
+(* This function takes a list of lists of constants. Constants which belong to
+the same inner list are combined together and yield mutually recursive 
+functions. *)
+loadt "examples/out_first.hl";;
+f_GE `4` `4` None;;
+f_GT `4` `4` None;;
+
+(* But it is still difficult to keep track of all dependencies. So it
+is better to compute all dependencies automatically and then call
+write_rules_consts *)
+let consts = dependencies db `a > b /\ a >= SUC b`;;
+write_rules_consts db "examples/out_first.hl" consts;;
+loadt "examples/out_first.hl";;
+f_GE `5` `6` None;;
+
+(* The function dependencies takes a database and a term as arguments.
+The term must contain all constants for which dependencies are computed.
+This function returns a list of lists of constants which is accepted
+by write_rules_consts. *)
+
+(*****************************************************************************)
+(* Restrictions                                                              *)
+(*****************************************************************************)
