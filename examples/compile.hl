@@ -286,11 +286,88 @@ get_all_counters();;
 (* Abstractions                                                              *)
 (*****************************************************************************)
 
+(* Both simple and generalized abstractions are supported *)
+
+let abs_def = new_definition `abs_def s = MAP (\(x, y). x + y) s`;;
+let abs_def2 = new_definition `abs_def2 s = MAP (\(x, y). [x; y]) s`;;
+let abs_def3 = new_definition `abs_def3 z s = MAP (\(x, y). [x; y; z]) s`;;
+
 let db = add_thms (empty_db "abs") [
-  ""
+  "abs_def", abs_def, [];
+  "abs_def2", abs_def2, [];
+  "abs_def3", abs_def3, [];
   "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
   "MAP", MAP, [];
 ];;
+
+let tm = `abs_def [1,2; 3,4]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+let tm = `abs_def2 [1,2; 3,4]`;;
+let consts = dependencies db tm ~inst_types:false;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(* FIXME: bug (probably in fixed_args) *)
+let tm = `abs_def3 0 [1,2; 3,4]`;;
+let consts = dependencies db tm ~inst_types:false;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+let tm = `MAP (\x. CONS x [1]) [1;2;3]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(* "match" is also supported *)
+let match_map = define 
+  `match_map f xs = 
+    match xs with 
+    | [] -> [] 
+    | CONS x xs -> CONS (f x) (match_map f xs)`;;
+
+add_thms db ["match_map", match_map, []];;
+
+let tm = `match_map (\x. CONS x [1]) [1;2;3]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(* "let" is not supported directly (it may change in future versions)
+but it is easy to replace "let" with abstractions. *)
+let let_def = define `let_def x = let t = SUC x in t + t`;;
+let let_def' = PURE_REWRITE_RULE[LET_DEF; LET_END_DEF] let_def;;
+
+add_thms db ["let_def'", let_def', []];;
+let tm = `let_def 30`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(* For this simple definition it is better to expand let completely and
+eliminate abstractions. The compiled definition will compute `SUC x` only once. *)
+let let_def'' = REWRITE_RULE[LET_DEF; LET_END_DEF] let_def;;
+
+let db = add_thms (empty_db "let") [
+  "let_def''", let_def'', [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+];;
+let tm = `let_def 30`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
 
 
 (*****************************************************************************)
