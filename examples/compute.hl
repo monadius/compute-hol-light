@@ -8,8 +8,8 @@ open Compute;;
 (* Basic usage                                                               *)
 (*****************************************************************************)
 
-(* Add rewrite rules (equality theorems) to the default global set of rewrite
-rules (compset) *)
+(* Add rewrite rules (equality theorems or conjunctions of equality theorems) 
+to the default global set of rewrite rules (compset) *)
 add_funs [ARITH_ADD; ARITH_SUC];;
 
 (* Evaluate basic expressions *)

@@ -116,11 +116,183 @@ write_rules_consts db "examples/out_first.hl" consts;;
 loadt "examples/out_first.hl";;
 f_GE `5` `6` None;;
 
-(* The function dependencies takes a database and a term as arguments.
+(* The function "dependencies" takes a database and a term as arguments.
 The term must contain all constants for which dependencies are computed.
 This function returns a list of lists of constants which is accepted
 by write_rules_consts. *)
 
+(* write_rules_consts (and write_rules_names) has an optional argument
+"term". This argument may be used to compile and evaluate a single
+term. *)
+
+write_rules_consts db "examples/out_first.hl" consts ~term:`3 > 4`;;
+loadt "examples/out_first.hl";;
+(* The term evaluation is in the variable "result" *)
+result;;
+
 (*****************************************************************************)
-(* Restrictions                                                              *)
+(* Functional arguments and type instantiations                              *)
+(*****************************************************************************)
+
+(* It is possible to have polymorphic definitions *)
+let db = add_thms (empty_db "second") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+let tm = `MAP SUC [1;SUC 2;3]`;;
+write_rules_names db "examples/out_2.hl" ["SUC"; "MAP"] ~term:tm;;
+loadt "examples/out_2.hl";;
+result;;
+
+(* The function f_MAP is polymorphic and it takes one functional argument.
+Functional arguments are pairs of a term and a function. Terms specify
+head symbols of the corresponding operations. *)
+f_MAP (`SUC`, f_SUC) `[1]` None;;
+f_MAP (`SUC`, f_SUC) `[]:(num)list` None;;
+f_MAP (`MAP SUC`, f_MAP (`SUC`, f_SUC)) `[[1; 2]; [3; 4]; []]` None;;
+
+(* We can restrict our definitions to particular types only *)
+let db = add_thms (empty_db "second") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [`MAP:(num->num)->(num)list->(num)list`];
+];;
+
+let tm = `MAP SUC [1;SUC 2;3]`;;
+write_rules_names db "examples/out_2.hl" ["SUC"; "MAP"] ~term:tm;;
+loadt "examples/out_2.hl";;
+
+(* Now the MAP function is called f_MAP_num_num and we can use it only
+with `:num->num` and `:(num)list` arguments *)
+f_MAP_num_num (`SUC`, f_SUC) `[1]` None;;
+
+(* The advantage of f_MAP_num_num is that it is faster than the polymorphic
+f_MAP function. It is also possible to produce both restricted and
+polymorphic functions. *)
+let db = add_thms (empty_db "second") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [`MAP:(A->B)->(A)list->(B)list`; `MAP:(num->num)->(num)list->(num)list`];
+];;
+
+write_rules_names db "examples/out_2.hl" ["SUC"; "MAP"] ~term:tm;;
+loadt "examples/out_2.hl";;
+result;;
+
+(* Note that the term `MAP SUC [1;SUC 2;3]` is evaluated with
+f_MAP_num_num *)
+f_MAP (`MAP SUC`, f_MAP (`SUC`, f_SUC)) `[[1; 2]; [3; 4]; []]` None;;
+f_MAP (`SUC`, f_SUC) `[1]` None;;
+f_MAP_num_num (`SUC`, f_SUC) `[1]` None;;
+
+(* It may be very difficult to select appropriate type instantiation
+for all terms in a database. We again can use the function "dependencies"
+to compute all required type instantiations automatically. *)
+let tm = `MAP (MAP SUC) [[1; 2]; [3; 4]]`;;
+let consts = dependencies db tm;;
+(* Note that "consts" has two entries for `MAP` with different types. *)
+(* The function "dependencies" mutates the database and now the database has
+entries for MAP with specific types. *)
+
+write_rules_consts db "examples/out_2.hl" consts ~term:tm;;
+loadt "examples/out_2.hl";;
+result;;
+
+(* There are two functions for evaluating MAP: f_MAP_num_num and
+f_MAP_num_list_num_list *)
+
+(* It is possible to suppress automatic type instantiation when
+calling the "dependencies" function *)
+
+let db = add_thms (empty_db "second") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+let consts = dependencies db tm ~inst_types:false;;
+write_rules_consts db "examples/out_2.hl" consts ~term:tm;;
+(* Now there is only one polymorphic f_MAP *)
+loadt "examples/out_2.hl";;
+result;;
+
+(* In rare cases it is still necessary to provide types explicitly in
+add_thms. Consider the following database with theorems for (=). *)
+
+let db = add_thms (empty_db "eq") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "PAIR_EQ", PAIR_EQ, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+let tm = `MAP ((=) (3, 4)) [(1,2); (3,4); (3,SUC 3)]`;;
+let consts = dependencies db tm;;
+
+(* We add an automatic call counter for (=) for a demonstration.
+Call counters and other extra parameters will be explained later. *)
+set_extra_for_names db (Extra_counter 0) ["="];;
+
+write_rules_consts db "examples/out_eq.hl" consts ~term:tm;;
+reset_all_counters();;
+loadt "examples/out_eq.hl";;
+result;;
+(* f_EQ_num: 21, f_EQ_num_num: 3 *)
+get_all_counters();;
+
+(* One disadvantage of produced definitions is that both ARITH_EQ and PAIR_EQ
+need to do quite a lot of work to prove that structurely equal terms are
+indeed equal (f_EQ_num is called 21 times). It is much simpler to prove 
+structural equality with reflexivity. *)
+
+(* Let's add a reflexivity theorem. Note that it must be added
+before ARITH_EQ and PAIR_EQ because compiled definitions will match
+all cases in the same order as they are defined in a database. *)
+let EQ_REFL' = EQT_INTRO (SPEC_ALL EQ_REFL);;
+
+let db = add_thms (empty_db "eq") [
+  "EQ_REFL'", EQ_REFL', [];
+  "ARITH_EQ", ARITH_EQ, [];
+  "PAIR_EQ", PAIR_EQ, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+(* Unfortunately, this does not work because "dependencies" assumes that
+it is enough to have EQ_REFL' rule only to compare pairs of numbers. *)
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_eq.hl" consts ~term:tm;;
+loadt "examples/out_eq.hl";;
+
+(* It is necessary to instantiate types of both EQ_REFL' and PAIR_EQ to
+get the desired result *)
+
+let db = add_thms (empty_db "eq") [
+  "EQ_REFL'", EQ_REFL', [`(=):num#num->num#num->bool`; `(=):num->num->bool`];
+  "ARITH_EQ", ARITH_EQ, [];
+  "PAIR_EQ", PAIR_EQ, [`(=):num#num->num#num->bool`];
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+let consts = dependencies db tm;;
+set_extra_for_names db (Extra_counter 0) ["="];;
+write_rules_consts db "examples/out_eq.hl" consts ~term:tm;;
+reset_all_counters();;
+loadt "examples/out_eq.hl";;
+result;;
+(* f_EQ_num: 3, f_EQ_num_num: 3 *)
+get_all_counters();;
+
+(*****************************************************************************)
+(* Abstractions                                                              *)
+(*****************************************************************************)
+
+let db = add_thms (empty_db "abs") [
+  ""
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+];;
+
+
+(*****************************************************************************)
+(* Limitations                                                               *)
 (*****************************************************************************)
