@@ -35,6 +35,8 @@ module type Compute_sig = sig
   val RESTR_EVAL_RULE : term list -> thm -> thm
   val RESTR_EVAL_TAC : term list -> tactic
 
+  val OR : term list -> term -> bool
+
   type 'a fterm
   type db
   type transform = private Conversion of (term -> thm * db fterm) | Rrules of thm list

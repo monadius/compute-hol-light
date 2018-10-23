@@ -4,16 +4,20 @@ needs "compute_hol4.hl";;
 
 open Compute;;
 
-(* Basic usage *)
+(*****************************************************************************)
+(* Basic usage                                                               *)
+(*****************************************************************************)
 
-(* Add rewrite rules (equality theorems) to the default global compset *)
+(* Add rewrite rules (equality theorems) to the default global set of rewrite
+rules (compset) *)
 add_funs [ARITH_ADD; ARITH_SUC];;
 
 (* Evaluate basic expressions *)
 EVAL_CONV `3 + 3 + 1`;;
 EVAL_CONV `3 + 2 + 4`;;
 
-(* The multiplication is not evaluated because we have not added a multiplication theorem yet *)
+(* The multiplication is not evaluated because we have not added 
+a multiplication theorem yet *)
 EVAL_CONV `3 * (3 + 2)`;;
 
 add_funs [ARITH_MULT];;
@@ -24,13 +28,27 @@ let th = ARITH_RULE `3 * 3 + 2 * 2 > 4`;;
 EVAL_RULE th;;
 prove(`3 * 3 + 2 * 2 = 13`, EVAL_TAC);;
 
-(* We can remove existing rules *)
+(* We can remove existing rules: all rules for constants in
+left hand sides of the given equality theorems are deleted *)
 del_funs [ARITH_ADD];;
+(* Alternatively, we can delete constants directly *)
+del_consts [`+`];;
+
 EVAL_CONV `3 + 3`;;
-(* Note that multiplication still works (the multiplication rule keeps an internal link to the addition rule ) *)
+
+(* Note that multiplication still works (the multiplication rule keeps 
+an internal link to the addition rule) *)
 EVAL_CONV `3 * 3`;;
 
 add_funs [ARITH_ADD];;
+
+(* It is also possible to add conversions *)
+add_convs [`FACT`, 1, NUM_FACT_CONV];;
+EVAL_CONV `FACT (20 + 3) * 3`;;
+
+(* Arguments of add_convs: a list of (constant, arity, conversion) *)
+add_convs [`EXP`, 2, NUM_EXP_CONV];;
+EVAL_CONV `3 EXP 4`;;
 
 (* Evaluation of lambdas *)
 EVAL_CONV `(\x. x + 3) 4`;;
@@ -52,8 +70,90 @@ EVAL_CONV `if 3 * 3 = 9 then (1 + 1 = 3) /\ A else B \/ B`;;
 (* Both conditional branches are evaluated if the condition cannot be decided *)
 EVAL_CONV `if 3 * 3 > 9 then (1 + 1 = 3) /\ A else B \/ B`;;
 
+(*****************************************************************************)
+(* Custom compsets                                                           *)
+(*****************************************************************************)
+
+(* A new compset can be created from a list of equality theorems *)
+let rw = new_compset [MAP; FILTER; ARITH];;
+
+(* General conversion are CBV_CONV and WEAK_CBV_CONV *)
+CBV_CONV rw `3 + 4`;;
+
+(* WEAK_CBV_CONV does not evaluates under unreduced abstractions *)
+CBV_CONV rw `(\x y. x + y) 3 4`;;
+WEAK_CBV_CONV rw `(\x y. x + y) 3 4`;;
+CBV_CONV rw `(\x y. 3 * x + y) 3`;;
+WEAK_CBV_CONV rw `(\x y. 3 * x + y) 3`;;
+
+CBV_CONV rw `MAP (\x. x + 1 + 1) [1;2;a]`;;
+WEAK_CBV_CONV rw `MAP (\x. x + 1 + 1) [1;2;a]`;;
+CBV_CONV rw `MAP (\x. x + 1 + 1)`;;
+WEAK_CBV_CONV rw `MAP (\x. x + 1 + 1)`;;
+
+(* This expression is only partially evaluated because our compset
+does not have rules for conditional expressions *)
+CBV_CONV rw `FILTER (\x. x > 2) [1; 2; 3; 4]`;;
+
+(* bool_compset() returns a basic compset with rules for 
+conditional and logical operations *)
+let rw = bool_compset();;
+
+(* We can add theorems and conversions to a custom compset *)
+(* Note: compsets are stateful objects *)
+add_thms [MAP; FILTER; ARITH] rw;;
+CBV_CONV rw `FILTER (\x. x > 2) [1; 2; 3; 4]`;;
+
+(* We can also add conversions and delete constants *)
+add_conv (`FACT`, 1, NUM_FACT_CONV) rw;;
+WEAK_CBV_CONV rw `FACT 10`;;
+
+scrub_const rw `FACT`;;
+CBV_CONV rw `FACT 10`;;
+scrub_thms [MAP] rw;;
+CBV_CONV rw `MAP SUC [1;2;3]`;;
+
+(* The global compset is accessible as the_compset *)
+CBV_CONV the_compset `MAP SUC [1;2;3]`;;
+
+(*****************************************************************************)
+(* Evaluation with restrictions                                              *)
+(*****************************************************************************)
+
+(* RESTR_EVAL_CONV takes a list of terms (constants) which should not be
+evaluated *)
+
+(* Normal evaluation *)
+RESTR_EVAL_CONV [] `(1 + 3) + 3 * 2`;;
+(* Restricted evaluation (note that the multiplication is only partially
+evaluated because it depends on the addition operation) *)
+RESTR_EVAL_CONV [`+`] `(1 + 3) + 3 * 2`;;
+RESTR_EVAL_CONV [`*`] `(1 + 3) + 3 * 2`;;
+
+(* RESTR_EVAL_RULE and RESTR_EVAL_TAC are also available *)
+
+(* For general conversions CBV_CONV and WEAK_CBV_CONV restrictions are
+specified with a predicate stored in the global reference stoppers *)
+stoppers := Some (fun tm -> tm = `SUC`);;
+CBV_CONV the_compset `MAP SUC [1;2;3]`;;
+
+stoppers := None;;
+CBV_CONV the_compset `MAP SUC [1;2;3]`;;
+
+(* OR takes a list of terms and returns a predicate which is true for given
+terms only *)
+stoppers := Some (OR [`SUC`; `+`]);;
+CBV_CONV the_compset `MAP (\x. x + SUC x) [1;2;3]`;;
+
+stoppers := None;;
+
+(*****************************************************************************)
+(* Lazy evaluation                                                           *)
+(*****************************************************************************)
+
 (* Infinite loop for tests *)
-(* Note: `inf_loop n = inf_loop (n + 1)` is recognized by the computeLib as an infinite loop *)
+(* Note: `inf_loop n = inf_loop (n + 1)` is recognized by the computeLib as 
+an infinite loop *)
 let inf_loop = define `inf_loop n = (inf_loop n /\ T)`;;
 let inf_loop_num = define `(inf_loop_num n):num = if T then inf_loop_num (n + 1) else inf_loop_num n`;;
 
@@ -108,5 +208,17 @@ add_funs [eager_lazy];;
 (* Infinite loop *)
 (* EVAL_CONV `lazy 1 (inf_loop_num 3)` *)
 
+(*****************************************************************************)
+(* Misc                                                                      *)
+(*****************************************************************************)
 
+(* The monitoring global reference contains a predicate which selects terms
+for which debug information is printed *)
+monitoring := Some (OR [`SUC`]);;
+EVAL_CONV `SUC 3`;;
+EVAL_CONV `MAP SUC [1;2]`;;
 
+monitoring := None;;
+
+(* It is possible to see all rules defined in a compset *)
+listItems rw;;
