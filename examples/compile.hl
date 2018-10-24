@@ -130,6 +130,42 @@ loadt "examples/out_first.hl";;
 (* The term evaluation is in the variable "result" *)
 result;;
 
+(* It is also possible to associate custom functions with constants in
+a database. For example, let's add a function for computing factorials. *)
+
+set_rule db `FACT`;;
+
+(* Now we need to define a function called f_FACT *)
+let f_FACT =
+  let op = `FACT` in
+  fun n opt_th -> trans_opt opt_th (NUM_FACT_CONV (mk_comb (op, n)));;
+
+(* We have used the predefined function trans_opt which performs the
+standard TRANS rule if the first argument is not None. *)
+
+let tm = `FACT (10 + 10)`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_first.hl" consts ~term:tm;;
+loadt "examples/out_first.hl";;
+result;;
+
+(* We can give a different name to our predefined function using the optional
+argument "name" of "set_rule" *)
+let db = add_thms (empty_db "first") [
+  "ARITH_MULT", ARITH_MULT, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+];;
+
+set_rule db `FACT` ~name:"factorial";;
+let factorial = f_FACT;;
+
+let tm = `FACT (10 + 10)`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_first.hl" consts ~term:tm;;
+loadt "examples/out_first.hl";;
+result;;
+
 (*****************************************************************************)
 (* Functional arguments and type instantiations                              *)
 (*****************************************************************************)
@@ -368,6 +404,80 @@ write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
 loadt "examples/out_abs.hl";;
 result;;
 
+(* Abstractions can be automatically eliminated. Abstractions
+slow down evaluations because the INST primitive inference rule
+has to consider possible variable captures for abstractions. *)
+
+let db = add_thms (empty_db "abs" ~eliminate_abs:true) [
+  "abs_def", abs_def, [];
+  "abs_def2", abs_def2, [];
+  "abs_def3", abs_def3, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "MAP", MAP, [];
+];;
+
+let tm = `abs_def2 [1,2; 3,4]`;;
+let consts = dependencies db tm ~inst_types:false;;
+(* Note that consts contains a special constant `$1`. This constant corresponds
+to a new automatically produced definition which eliminated the abstraction in
+abs_def2. *)
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+let tm = `abs_def3 0 [1,2; 3,4]`;;
+let consts = dependencies db tm ~inst_types:false;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(* Abstractions are not eliminated in terms *)
+let tm = `MAP (\x. CONS x [1]) [1;2;3]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
+loadt "examples/out_abs.hl";;
+result;;
+
+(*****************************************************************************)
+(* Short-circuit evaluations                                                 *)
+(*****************************************************************************)
+
+(* The second argument of /\ and \/ is evaluated only when the first
+argument is T for /\ and F for \/. Also only one branch of 
+"if" is evaluated. *)
+
+let inf_bool = define `(inf_bool n):bool = inf_bool (SUC n)`;;
+
+let db = add_thms (empty_db "lazy") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "MAP", MAP, [];
+  "ALL", ALL, [];
+  "inf_bool", inf_bool, [];
+];;
+
+let tm = `MAP (\x. if x = 3 then inf_bool 0 else F) [1;2]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_lazy.hl" consts ~term:tm;;
+loadt "examples/out_lazy.hl";;
+result;;
+
+let tm = `ALL (\x. x = 3 /\ inf_bool 0) [1;3;3]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_lazy.hl" consts ~term:tm;;
+loadt "examples/out_lazy.hl";;
+result;;
+
+let tm = `ALL (\x. x = 3 \/ inf_bool 0) [3;3;3]`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_lazy.hl" consts ~term:tm;;
+loadt "examples/out_lazy.hl";;
+result;;
+
+(*****************************************************************************)
+(* Extra paramters and memoization                                           *)
+(*****************************************************************************)
 
 
 (*****************************************************************************)
