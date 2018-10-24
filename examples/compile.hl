@@ -476,10 +476,181 @@ loadt "examples/out_lazy.hl";;
 result;;
 
 (*****************************************************************************)
-(* Extra paramters and memoization                                           *)
+(* Extra parameters and memoization                                           *)
 (*****************************************************************************)
 
+(* It is possible to specify global preprocessing operations for theorems
+in a database. There are two preprocessing steps: rewritings with
+some theorems and applying some rules. *)
+
+(* Suppose we want to eliminate "let" definitions for all theorems in
+our database. Then we can rewrite all theorems with LET_DEF and LET_END_DEF. *)
+
+let let_def = define `let_def x = let t = SUC x in t + t`;;
+
+let db = add_thms (empty_db "extra") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "let_def", let_def, [];
+];;
+
+add_extra_rewrite db ("LET_DEF", LET_DEF);;
+add_extra_rewrite db ("LET_END_DEF", LET_END_DEF);;
+
+(* Note that preprocessing steps are applied before the compilation process and
+when compiled definition are loaded. So all preprocessing theorems and conversions
+must be available when the compiled definitions are loaded. *)
+
+(* FIXME: bug in abs_th definition: the term path is incorrect,
+extra rewrites are not applied *)
+let tm = `let_def 3`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_extra.hl" consts ~term:tm;;
+loadt "examples/out_extra.hl";;
+
+(* Alternatively we may eliminate "let" completely with let_CONV *)
+
+let db = add_thms (empty_db "extra") [
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "let_def", let_def, [];
+];;
+
+add_extra_rule db ("CONV_RULE (DEPTH_CONV let_CONV)", CONV_RULE (DEPTH_CONV let_CONV));;
+
+(* FIXME: the extra conversion is not applied when abs_th is constructed *)
+let tm = `let_def 3`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_extra.hl" consts ~term:tm;;
+loadt "examples/out_extra.hl";;
+
+(* With each constant in a database we can associate some extra parameters which
+is used to add extra features to the generated code. *)
+
+(* We can generate counters for a specific function. This counters can be used
+to track how many times a given function is invoked. *)
+
+(* Extra_counter takes one integer argument: if this argument is greater than 0
+then the counter value is printed during the evaluation process when the counter
+value is divisble by this argument. *)
+set_extra_for_all db (Extra_counter 0);;
+set_extra_for_names db (Extra_counter 10) ["SUC"];;
+
+write_rules_names db "examples/out_extra.hl" ["SUC"; "+"];;
+loadt "examples/out_extra.hl";;
+
+(* It is recommended to reset all counters before evaluation *)
+reset_all_counters();;
+f_ADD `65535` `1023` None;;
+get_counter "f_SUC";;
+get_all_counters();;
+
+(* We can improve performance of some functions if we memoize their results.
+There are different memoization implementations available: with standard Hashtbl,
+with associative arrays which always have constant number of entries, and
+with LRU associative arrays which also have constant number of entries. *)
+
+let fib = define `fib n = if n = 0 \/ n = 1 then n else fib (n - 1) + fib (n - 2)`;;
+
+let db = add_thms (empty_db "extra") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_PRE", ARITH_PRE, [];
+  "ARITH_LE", ARITH_LE, [];
+  "ARITH_LT", ARITH_LT, [];
+  "ARITH_SUB", ARITH_SUB, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "fib", fib, [];
+];;
+
+let consts = dependencies db `fib 10`;;
+write_rules_consts db "examples/out_extra.hl" consts;;
+loadt "examples/out_extra.hl";;
+
+(* Very slow *)
+f_fib `25` None;;
+
+set_extra_for_consts db (Extra_memo Hashtbl_memo) [`fib`];;
+write_rules_consts db "examples/out_extra.hl" consts;;
+loadt "examples/out_extra.hl";;
+
+(* Very fast *)
+clear_all_memos();;
+clear_assoc_memos();;
+clear_lru_memos();;
+
+f_fib `25` None;;
+f_fib `100` None;;
+
+(* We could also use:
+Extra_memo (Assoc_memo 1000)
+Extra_memo (Assoc_lru (1000, 2))
+1000 here is the size of the corresponding associative array.
+*)
+
+(* Note that memoized functions are not tail recursive *)
+
+(* If we want to discover which functions should be memoized it may be useful
+to add Extra_arg_list to all functions in order to record all calls with all
+arguments. *)
+
+let db = add_thms (empty_db "extra") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_PRE", ARITH_PRE, [];
+  "ARITH_LE", ARITH_LE, [];
+  "ARITH_LT", ARITH_LT, [];
+  "ARITH_SUB", ARITH_SUB, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "fib", fib, [];
+];;
+
+set_extra_for_all db Extra_arg_list;;
+write_rules_consts db "examples/out_extra.hl" consts;;
+loadt "examples/out_extra.hl";;
+
+clear_arg_lists();;
+f_fib `15` None;;
+
+all_arg_lists();;
+
+let args = !(create_arg_list "f_fib") |> map hd;;
+(* 1973 *)
+length args;;
+(* 16 *)
+length (setify args);;
+
+(* It is obvious that a function which is called 1973 times with only 16
+different arguments must be memoized. *)
+
+(* If we call a function with bad arguments we do not get an informative
+error message by default *)
+f_fib `BIT0 (BIT1 _0)` None;;
+
+(* We can compile functions with better error messages by setting the global
+flag generate_eval_errors *)
+generate_eval_errors := true;;
+write_rules_consts db "examples/out_extra.hl" consts;;
+loadt "examples/out_extra.hl";;
+
+f_fib `BIT0 (BIT1 _0)` None;;
+
+(* Now we can see that the function f_EQ_num cannot evaluate arguments
+`BIT0 (BIT1 _0)` and `0` *)
+
+(* Note that when generate_eval_errors := true then all functions are
+not tail recursive *)
+
+generate_eval_errors := false;;
 
 (*****************************************************************************)
 (* Limitations                                                               *)
 (*****************************************************************************)
+
+(* The main limitation of the current version of the evaluation tool is that
+it cannot produce code for functions which return other functions. The following
+constructions are also not allowed: `(if x = 2 then SUC else PRE) 3`. Rators
+should not reduce to functions. Functions cannot be passed inside lists, pairs
+or any other structures: `MAP (\f. f 3) [SUC; PRE]`. *)
+
+(* This limitations may be removed in later versions of the evaluation tool. *)
