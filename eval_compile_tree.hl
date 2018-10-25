@@ -282,7 +282,7 @@ let get_eval_commands tail_rec =
     let fixed = map (fun tm -> tm, Arg_term) f.fixed_args in
     let tys, _ = splitlist dest_fun_ty (type_of f.app_term) in
     let extra = zip (List.mapi mk_tm tys) f.extra_args in
-    fixed @ args, extra
+    args, fixed, extra
   in
   let rec commands tail_flag env tree =
     match tree with
@@ -350,7 +350,7 @@ let get_eval_commands tail_rec =
           let env', cmds' = commands false env arg in
           env', cmds @ cmds') 
           (env, []) f.applied_args in
-      let args, extra_args = get_args f in
+      let args, fixed_args, extra_args = get_args f in
       let cmd =
         match f.app_type with
         | Abs_app _ -> failwith "Abs_app is not allowed"
@@ -370,13 +370,12 @@ let get_eval_commands tail_rec =
         | Const_app _ | Var_app _ ->
           let simple_app = forall (fun (_, ty) -> ty <> Arg_theorem) args in
           let extra_args = if simple_app then [] else extra_args in
-          let args = args @ extra_args in
           let arg_cmds = map (fun (tm, ty) ->
             let target = if ty = Arg_function then Arg_function else Arg_term in
-            convert_ref target (tm, ty)) args in
+            convert_ref target (tm, ty)) (fixed_args @ args @ extra_args) in
           let comb_cmd = 
             let op, _ = strip_comb_gabs f.app_term in
-            comb op args in
+            comb op (args @ extra_args) in
           let last_arg =
             let comb_ref = mk_ref_cmd comb_cmd in
             match tail_rec with

@@ -168,7 +168,7 @@ let lambda8 = new_definition `lambda8 n = (\x. SUC ((\x. n) 3)) n`;;
 let lambda9 = new_definition `lambda9 f = (\x. f x + 3) (f 2)`;;
 let lambda10 = new_definition `lambda10 y = (\x. (x,y)) 3`;;
 
-let db = add_thms (empty_db ()) [
+let db = add_thms (empty_db "test") [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_ADD", ARITH_ADD, [];
   "ARITH_MULT", ARITH_MULT, [];
@@ -182,9 +182,12 @@ let db = add_thms (empty_db ()) [
   "lambda10", lambda10, [];
 ];;
 
+loadt "eval_compile.hl";;
+
 write_rules_names db "out2.hl" [
   "SUC"; "+"; 
-  "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10";
+  (* "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10"; *)
+  "lambda7"
 ]
 ~term:`lambda7 (a:A)`;;
 

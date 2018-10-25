@@ -165,6 +165,7 @@ let consts = dependencies db tm;;
 write_rules_consts db "examples/out_first.hl" consts ~term:tm;;
 loadt "examples/out_first.hl";;
 result;;
+factorial `30` None;;
 
 (*****************************************************************************)
 (* Functional arguments and type instantiations                              *)
@@ -349,7 +350,6 @@ write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
 loadt "examples/out_abs.hl";;
 result;;
 
-(* FIXME: bug (probably in fixed_args) *)
 let tm = `abs_def3 0 [1,2; 3,4]`;;
 let consts = dependencies db tm ~inst_types:false;;
 write_rules_consts db "examples/out_abs.hl" consts ~term:tm;;
