@@ -12,7 +12,7 @@ type pattern =
   Pvar of int
 | Papp of term * pattern list;;
 
-type memo_type = Hashtbl_memo | Weak_memo | Assoc_memo of int | Assoc_lru of int * int;;
+type memo_type = Hashtbl_memo | Assoc_memo of int | Assoc_lru of int * int;;
 
 type extra = 
   | Extra_counter of int
