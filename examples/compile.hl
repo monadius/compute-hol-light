@@ -620,6 +620,7 @@ let db = add_thms (empty_db "extra") [
 ];;
 
 set_extra_for_all db Extra_arg_list;;
+let consts = dependencies db `fib 10`;;
 write_rules_consts db "examples/out_extra.hl" consts;;
 loadt "examples/out_extra.hl";;
 
@@ -632,10 +633,24 @@ let args = !(create_arg_list "f_fib") |> map hd;;
 (* 1973 *)
 length args;;
 (* 16 *)
-length (setify args);;
+length (setify_terms args);;
 
 (* It is obvious that a function which is called 1973 times with only 16
 different arguments must be memoized. *)
+
+(* There are some useful functions for analyzing lists of arguments *)
+
+(* Compute frequencies of all elements in a list and sort them 
+from most to less frequent *)
+freqs args;;
+
+(* Returns a pair: a number between 0 and 1 which measures the proportion
+of repeated arguments (0 - all unique, 1 - all repeated) and the number
+of all arguments. *)
+analyze_arg_list !(create_arg_list "f_fib");;
+
+(* Applies analyze_arg_list to all lists of arguments *)
+analyze_arg_lists();;
 
 (* If we call a function with bad arguments we do not get an informative
 error message by default *)

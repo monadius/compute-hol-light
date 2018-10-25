@@ -230,6 +230,8 @@ let create_lru_memo, clear_lru_memos, get_lru_memos =
     Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
   create, clear_all, get_all;;
 
+(* Lists of arguments *)
+
 let create_arg_list, clear_arg_lists, all_arg_lists =
   let lists = Hashtbl.create 100 in
   let create (name: string) =
@@ -243,6 +245,53 @@ let create_arg_list, clear_arg_lists, all_arg_lists =
   let all () =
     Hashtbl.fold (fun name args r -> (name, !args) :: r) lists [] in
   create, clear_all, all;;
+
+module Term_set = Set.Make(
+  struct 
+    type t = term
+    let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
+  end);;
+
+module Type_set = Set.Make(
+  struct
+    type t = hol_type
+    let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
+  end);;
+
+module Term_list_set = Set.Make(
+  struct
+    type t = term list
+    let compare (ts1:t) (ts2:t) = Pervasives.compare ts1 ts2
+  end);;
+
+let setify_types tys =
+  Type_set.of_list tys |> Type_set.elements;;
+
+let setify_terms tms =
+  Term_set.of_list tms |> Term_set.elements;;
+
+let freqs list =
+  let table = Hashtbl.create (length list) in
+  let count x =
+    let v =
+      try Hashtbl.find table x 
+      with Not_found -> 
+        let v = ref 0 in
+        Hashtbl.add table x v; v in
+    incr v in
+  List.iter count list;
+  Hashtbl.fold (fun k v r -> (k, !v) :: r) table []
+    |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1);;
+
+let analyze_arg_list args =
+  let n = List.length args in
+  let k = Term_list_set.of_list args |> Term_list_set.cardinal in
+  float (n - k) /. float n, k, n;;
+
+let analyze_arg_lists () =
+  all_arg_lists ()
+    |> List.map (fun (name, args) -> name, analyze_arg_list args)
+    |> List.sort (fun (_, (v1, _)) (_, (v2, _)) -> Pervasives.compare v2 v1);;
 
 (* A performance improvement trick from calc_num.ml *)
 let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =

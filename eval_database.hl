@@ -379,12 +379,6 @@ let spec_rule db rule type_tm =
       add_thm db ~type_tm ~fname:rule.f_prefix (rw.thm_name, rw.thm_index, rw.thm)) 
     (List.rev rule.rewrites);;
 
-module Term_set = Set.Make(
-  struct 
-    type t = term
-    let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
-  end);;
-
 (* Kosaraju's algorithm *)
 let resolve_deps deps =
   let find table v d = 
