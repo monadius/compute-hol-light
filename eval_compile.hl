@@ -287,7 +287,7 @@ let compile_rules db rules =
       | Extra_memo t ->
         let create =
           match t with
-          | Hashtbl_memo -> "create_memo"
+          | Hashtbl_memo -> "create_hashtbl_memo"
           | Assoc_memo size -> Format.sprintf "create_assoc_memo %d" size
           | Assoc_lru (size, list_size) ->
             Format.sprintf "create_lru_memo %d ~list_size:%d" size list_size in

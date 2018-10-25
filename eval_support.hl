@@ -60,7 +60,7 @@ let rec hash_string_of_term tm =
 
 (* Hashtbl memo *)
 
-let create_memo, clear_all_memos =
+let create_hashtbl_memo, clear_hashtbl_memos, get_hashtbl_memos =
   let memos = Hashtbl.create 100 in
   let create (name: string) =
     try Hashtbl.find memos name
@@ -70,7 +70,9 @@ let create_memo, clear_all_memos =
       memo in
   let clear_all () =
     Hashtbl.iter (fun _ m -> Hashtbl.clear m) memos in
-  create, clear_all;;
+  let get_all () =
+    Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
+  create, clear_all, get_all;;
 
 (* Assoc and Assoc_lru memos *)
 
@@ -210,6 +212,11 @@ let create_lru_memo, clear_lru_memos, get_lru_memos =
   let get_all () =
     Hashtbl.fold (fun name memo r -> (name, memo) :: r) memos [] in
   create, clear_all, get_all;;
+
+let clear_all_memos () =
+  clear_hashtbl_memos ();
+  clear_assoc_memos ();
+  clear_lru_memos ();;
 
 (* Lists of arguments *)
 

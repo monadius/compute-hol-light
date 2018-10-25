@@ -564,7 +564,7 @@ There are different memoization implementations available: with standard Hashtbl
 with associative arrays which always have constant number of entries, and
 with LRU associative arrays which also have constant number of entries. *)
 
-let fib = define `fib n = if n = 0 \/ n = 1 then n else fib (n - 1) + fib (n - 2)`;;
+let fib = define `fib n = if n < 2 then n else fib (n - 1) + fib (n - 2)`;;
 
 let db = add_thms (empty_db "extra") [
   "ARITH_EQ", ARITH_EQ, [];
@@ -590,8 +590,6 @@ loadt "examples/out_extra.hl";;
 
 (* Very fast *)
 clear_all_memos();;
-clear_assoc_memos();;
-clear_lru_memos();;
 
 f_fib `25` None;;
 f_fib `100` None;;
