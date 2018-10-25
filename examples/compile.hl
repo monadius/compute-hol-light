@@ -488,21 +488,23 @@ our database. Then we can rewrite all theorems with LET_DEF and LET_END_DEF. *)
 
 let let_def = define `let_def x = let t = SUC x in t + t`;;
 
-let db = add_thms (empty_db "extra") [
+let db = empty_db "extra";;
+
+add_extra_rewrite db ("LET_DEF", LET_DEF);;
+add_extra_rewrite db ("LET_END_DEF", LET_END_DEF);;
+
+(* Note that preprocessing steps are applied when theorems are added
+to a database and when compiled definitions are loaded. So it is important
+to define preprocessing steps before adding theorems to a database. Also
+all preprocessing theorems and conversions must be available when 
+the compiled definitions are loaded. *)
+
+add_thms db [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_ADD", ARITH_ADD, [];
   "let_def", let_def, [];
 ];;
 
-add_extra_rewrite db ("LET_DEF", LET_DEF);;
-add_extra_rewrite db ("LET_END_DEF", LET_END_DEF);;
-
-(* Note that preprocessing steps are applied before the compilation process and
-when compiled definition are loaded. So all preprocessing theorems and conversions
-must be available when the compiled definitions are loaded. *)
-
-(* FIXME: bug in abs_th definition: the term path is incorrect,
-extra rewrites are not applied *)
 let tm = `let_def 3`;;
 let consts = dependencies db tm;;
 write_rules_consts db "examples/out_extra.hl" consts ~term:tm;;
@@ -510,22 +512,22 @@ loadt "examples/out_extra.hl";;
 
 (* Alternatively we may eliminate "let" completely with let_CONV *)
 
-let db = add_thms (empty_db "extra") [
+let db = empty_db "extra";;
+add_extra_rule db ("CONV_RULE (DEPTH_CONV let_CONV)", CONV_RULE (DEPTH_CONV let_CONV));;
+
+add_thms db [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_ADD", ARITH_ADD, [];
   "let_def", let_def, [];
 ];;
 
-add_extra_rule db ("CONV_RULE (DEPTH_CONV let_CONV)", CONV_RULE (DEPTH_CONV let_CONV));;
-
-(* FIXME: the extra conversion is not applied when abs_th is constructed *)
 let tm = `let_def 3`;;
 let consts = dependencies db tm;;
 write_rules_consts db "examples/out_extra.hl" consts ~term:tm;;
 loadt "examples/out_extra.hl";;
 
-(* With each constant in a database we can associate some extra parameters which
-is used to add extra features to the generated code. *)
+(* We can associate extra parameters with each constant in a database.
+These parameters are used for adding extra features to the generated code. *)
 
 (* We can generate counters for a specific function. This counters can be used
 to track how many times a given function is invoked. *)
