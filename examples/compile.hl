@@ -167,6 +167,18 @@ loadt "examples/out_first.hl";;
 result;;
 factorial `30` None;;
 
+(* One can load a predefined database which contains arithmetic operations
+for natural numbers (implemented with standard conversions NUM_..._CONV) and
+comparison operations for natural numbers, pairs, lists, and optional types *)
+
+needs "eval_default_db.hl";;
+let db = default_db "default";;
+let tm = `([SOME (FACT 5)] = [NONE]), 300 DIV 4 + 300 MOD 4`;;
+let consts = dependencies db tm;;
+write_rules_consts db "examples/out_first.hl" consts ~term:tm;;
+loadt "examples/out_first.hl";;
+result;;
+
 (*****************************************************************************)
 (* Functional arguments and type instantiations                              *)
 (*****************************************************************************)
