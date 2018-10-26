@@ -279,7 +279,9 @@ let get_eval_commands tail_rec =
       let name = string_of_int (i + 1) in
       mk_var (name, ty) in
     let args = map get_eval_tt f.applied_args in
-    let fixed = map (fun tm -> tm, Arg_term) f.fixed_args in
+    let fixed = map (fun tm -> 
+      tm, if is_fun_ty (type_of tm) then Arg_function else Arg_term) 
+      f.fixed_args in
     let tys, _ = splitlist dest_fun_ty (type_of f.app_term) in
     let extra = zip (List.mapi mk_tm tys) f.extra_args in
     args, fixed, extra
@@ -767,12 +769,15 @@ type compile_env = {
 
 let compile_eval_tree compile_env tail_rec tm_name (base_tm, tree) =
   let args' = map (fun (tm, (name, _)) -> (tm, Arg_term), name) compile_env.tm_names in
+  let args_f = compile_env.tm_names
+    |> filter (fun (tm, _) -> is_fun_ty (type_of tm))
+    |> map (fun (tm, (name, _)) -> (tm, Arg_function), Format.sprintf "(%s, func_%s)" name name) in
   (* TODO: use tm arguments here instead of fun_f *)
   (* let args_f = compile_env.tm_names
     |> filter (fun (tm, _) -> is_fun_ty (type_of tm))
     |> map (fun (tm, (name, _)) -> (tm, Arg_function), "fun_" ^ name) in
   let args = args' @ args_f in *)
-  let args = args' in
+  let args = args' @ args_f in
   let _, cmds = get_eval_commands tail_rec (map fst args) tree in
   let cmds = optimize_comb base_tm cmds in
   let _, p_tms = pattern_cmds (map fst args) cmds in
