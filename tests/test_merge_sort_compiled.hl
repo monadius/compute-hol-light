@@ -120,11 +120,11 @@ let run_test ?(cbv = true) tm =
   let name = string_of_term tm in
   let tm_th = norm tm in
   let tm = rand (concl tm_th) in
-  let _, time1, _ = assert_noexception ~name:name (f_merge_sort tm) None in
+  let eval_th, time1, _ = assert_noexception ~name:name (f_merge_sort tm) None in
   let tm' = mk_comb (`merge_sort`, tm) in
   let _, time2, _ =
-    if cbv then assert_noexception ~name:(name ^ "_cbv") norm0 tm'
-    else ((), -1.0, true) in
+    if cbv then assert_eq ~name:(name ^ "_cbv") norm tm' eval_th
+    else (TRUTH, -1.0, true) in
   time1, time2;;
 
 reset_test_results();;
