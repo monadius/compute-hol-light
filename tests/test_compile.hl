@@ -1,14 +1,7 @@
+needs "tests/common.hl";;
 needs "eval_compile.hl";;
 
-let true_tm = standardize_tm `T`;;
-let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]);;
-let COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
-
-let p_var_bool = `P: bool`;;
-let T_AND = TAUT `T /\ P <=> P` and
-    F_AND = TAUT `F /\ P <=> F` and
-    T_OR = TAUT `T \/ P <=> T` and
-    F_OR = TAUT `F \/ P <=> P`;;
+reset_test_results();;
 
 (* Test db 0 *)
 
@@ -17,19 +10,17 @@ let db = add_thms (empty_db "test0") [
   "ARITH_GE", ARITH_GE, [];
   "ARITH_GT", ARITH_GT, [];
   "FILTER", FILTER, [];
-  "EQ_REFL", EQT_INTRO (SPEC_ALL EQ_REFL), [];
 ];;
-
-(* set_rule db `(=):num->num->bool`;; *)
 
 let tm = `FILTER (\x. x > 2) [1;2;3;4]`;;
 let consts = dependencies db tm ~inst_types:false;;
 map (map (fun c -> c, type_of c)) consts;;
-write_rules_consts db "out2.hl" consts ~term:tm;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
 
-loadt "out2.hl";;
+loadt "tests/out.hl";;
+assert_rhs (fun () -> result) () `[3; 4]`;;
 
-(* General tests *)
+(* Test db *)
 
 let d1 = new_definition `d1 x = FILTER (\x. (\x y. x) x 2 > 3) [x;2;3]`;;
 let d2 = new_definition 
@@ -62,28 +53,55 @@ let d8 = new_definition
 let d9 = new_definition
   `d9 p t = (function (1, y) -> y | (2, y) -> t) p`;;
 
-let d1', eqs1 = replace_abstractions d1;;
-let d2', eqs2 = replace_abstractions d2;;
-let d3', eqs3 = replace_abstractions d3;;
-let d4', eqs4 = replace_abstractions d4;;
+let (d1', eqs1), _, _ = assert_noexception replace_abstractions d1;;
+assert_eq length eqs1 2;;
+let (d1', eqs1), _, _ = assert_noexception replace_abstractions d1;;
+let (d2', eqs2), _, _ = assert_noexception replace_abstractions d2;;
+assert_eq length eqs2 2;;
+let (d3', eqs3), _, _ = assert_noexception replace_abstractions d3;;
+assert_eq length eqs3 1;;
+let (d4', eqs4), _, _ = assert_noexception replace_abstractions d4;;
+assert_eq length eqs4 0;;
 (* replace_abstractions d5 should fail *)
-let d5', eqs5 = replace_abstractions d5;;
-let d6', eqs6 = replace_abstractions d6;;
-let d7', eqs7 = replace_abstractions d7;;
-let d8', eqs8 = replace_abstractions d8;;
-let d9', eqs9 = replace_abstractions d9;;
+let _ = assert_exception replace_abstractions d5;;
+let (d6', eqs6), _, _ = assert_noexception replace_abstractions d6;;
+assert_eq length eqs6 1;;
+let (d7', eqs7), _, _ = assert_noexception replace_abstractions d7;;
+assert_eq length eqs7 1;;
+let (d8', eqs8), _, _ = assert_noexception replace_abstractions d8;;
+assert_eq length eqs8 1;;
+let (d9', eqs9), _, _ = assert_noexception replace_abstractions d9;;
+assert_eq length eqs9 0;;
 
-eliminate_top_match (SPEC_ALL d1');;
-eliminate_top_match (SPEC_ALL d2');;
-eliminate_top_match (SPEC_ALL d3');;
-eliminate_top_match (SPEC_ALL d4');;
-eliminate_top_match (SPEC_ALL d9');;
-split_thm d1';;
-split_thm d2';;
-split_thm d3';;
-split_thm d4';;
+assert_exception eliminate_top_match (SPEC_ALL d1');;
+let ths2 = eliminate_top_match (SPEC_ALL d2');;
+assert_eq length ths2 2;;
+let ths3 = eliminate_top_match (SPEC_ALL d3');;
+assert_eq length ths3 2;;
+assert_eq concl (el 1 ths3) `d3 3 4 = 3 + 4`;;
+let ths4 = eliminate_top_match (SPEC_ALL d4');;
+assert_eq (map (rand o concl)) ths4 [`a + a`];;
+let ths9 = eliminate_top_match (SPEC_ALL d9');;
+assert_eq length ths9 2;;
+let ths1 = split_thm d1';;
+assert_eq length ths1 1;;
+let ths2 = split_thm d2';;
+assert_eq length ths2 2;;
+let ths3 = split_thm d3';;
+assert_eq length ths3 2;;
+assert_eq (concl o el 1) ths3 `d3 3 4 = 3 + 4`;;
+let ths4 = split_thm d4';;
+assert_eq length ths4 1;;
+assert_eq (rand o concl o hd) ths4 `a + a`;;
 
-let db = add_thms (empty_db "test" ~eliminate_abs:true) [
+let rules = [
+  "FILTER", FILTER, [];
+  "MAP", MAP, [];
+  "HD", HD, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "ARITH_GE", ARITH_GE, [];
+  "ARITH_GT", ARITH_GT, [];
   "d1", d1, [];
   "d2", d2, [];
   "d3", d3, [];
@@ -94,16 +112,191 @@ let db = add_thms (empty_db "test" ~eliminate_abs:true) [
   "d9", d9, [];
 ];;
 
+(* Eliminate abs and inst types *)
+
+let db = add_thms (empty_db "test" ~eliminate_abs:true) rules;;
+
 find_most_specific_entry db `d1`;;
 find_most_specific_entry db `d3`;;
 let tm = `d3 1 2 + d2 1 2`;;
-let tm = `d7 (1, 2)`;;
-let tm = `d8 1 2`;;
-let tm = `d9 (1, x) [&7]`;;
-let consts = dependencies db tm ~inst_types:true;;
+let consts1 = dependencies db tm ~inst_types:true;;
+assert_eq length consts1 6;;
 
-write_rules_consts db "out2.hl" consts ~term:tm;;
-loadt "out2.hl";;
+let tm = `d7 (1, 2)`;;
+let consts2 = dependencies db tm ~inst_types:true;;
+assert_eq length consts2 2;;
+
+let tm = `d8 1 2`;;
+let consts3 = dependencies db tm ~inst_types:true;;
+assert_eq length consts3 4;;
+
+let tm = `d9 (1, x) [&7]`;;
+let consts4 = dependencies db tm ~inst_types:true;;
+assert_eq length consts4 1;;
+assert_eq (fun _ -> consts4) () [[`d9:num#(real)list->(real)list->(real)list`]];;
+
+let tm = `(\[x]. x) (d1 4) + 
+          d2 1 2 + 
+          d3 1 2 +
+          d4 (&7) 3 +
+          d6 2 4 +
+          (\(x, y). x) (d7 (1, 2)) +
+          HD (d8 1 7) +
+          d9 (2, 3) 5`;;
+
+let consts = dependencies db tm ~inst_types:true;;
+assert_eq length consts 20;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `34`;;
+
+assert_rhs (f_d1 `1`) None `[]:(num)list`;;
+assert_rhs (f_d1 `4`) None `[4]`;;
+assert_rhs (f_d2 `1` `2`) None `1`;;
+assert_rhs (f_d2 `3` `4`) None `11`;;
+assert_exception (f_d2 `1` `1`) None;;
+assert_rhs (f_d3 `1` `0`) None `0`;;
+assert_rhs (f_d3 `3` `4`) None `7`;;
+assert_exception (f_d3 `2` `0`) None;;
+assert_rhs (f_d4_real `&1` `3`) None `6`;;
+assert_rhs (f_d6 `1` `0`) None `1`;;
+assert_rhs (f_d6 `2` `1`) None `3`;;
+assert_rhs (f_d6 `2` `4`) None `5`;;
+assert_exception (f_d6 `0` `1`) None;;
+assert_exception (f_d6 `2` `0`) None;;
+assert_rhs (f_d7_num_num `3, 5`) None `5, 3`;;
+assert_rhs (f_d8 `1` `7`) None `[9; 8]`;;
+assert_rhs (f_d8 `2` `7`) None `[3; 9]`;;
+assert_exception (f_d8 `0` `7`) None;;
+assert_rhs (f_d9_num `1, b:num` `a:num`) None `b:num`;;
+assert_rhs (f_d9_num `2, 7` `a:num`) None `a:num`;;
+assert_exception (f_d9_num `3, 3` `3`) None;;
+
+let f_d1, f_d2, f_d3, f_d4_real, f_d5, f_d6, f_d7_num_num, f_d8, f_d9_num =
+  0, 0, 0, 0, 0, 0, 0, 0, 0;;
+
+(* Eliminate abs and do not inst types *)
+
+let db = add_thms (empty_db "test" ~eliminate_abs:true) rules;;
+
+let tm = `(\[x]. x) (d1 4) + 
+          d2 1 2 + 
+          d3 1 2 +
+          d4 (&7) 3 +
+          d6 2 4 +
+          (\(x, y). x) (d7 (1, 2)) +
+          HD (d8 1 7) +
+          d9 (2, 3) 5`;;
+
+let consts = dependencies db tm ~inst_types:false;;
+assert_eq length consts 20;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `34`;;
+
+assert_rhs (f_d1 `1`) None `[]:(num)list`;;
+assert_rhs (f_d1 `4`) None `[4]`;;
+assert_rhs (f_d2 `1` `2`) None `1`;;
+assert_rhs (f_d2 `3` `4`) None `11`;;
+assert_exception (f_d2 `1` `1`) None;;
+assert_rhs (f_d3 `1` `0`) None `0`;;
+assert_rhs (f_d3 `3` `4`) None `7`;;
+assert_exception (f_d3 `2` `0`) None;;
+assert_rhs (f_d4 `&1` `3`) None `6`;;
+assert_rhs (f_d4 `a:A` `8`) None `16`;;
+assert_rhs (f_d6 `1` `0`) None `1`;;
+assert_rhs (f_d6 `2` `1`) None `3`;;
+assert_rhs (f_d6 `2` `4`) None `5`;;
+assert_exception (f_d6 `0` `1`) None;;
+assert_exception (f_d6 `2` `0`) None;;
+assert_rhs (f_d7 `3, 5`) None `5, 3`;;
+assert_rhs (f_d8 `1` `7`) None `[9; 8]`;;
+assert_rhs (f_d8 `2` `7`) None `[3; 9]`;;
+assert_exception (f_d8 `0` `7`) None;;
+assert_rhs (f_d9 `1, b:num` `a:num`) None `b:num`;;
+assert_rhs (f_d9 `2, 7` `a:num`) None `a:num`;;
+assert_rhs (f_d9 `2, &7` `a:real`) None `a:real`;;
+assert_exception (f_d9 `3, 3` `3`) None;;
+
+let f_d1, f_d2, f_d3, f_d4, f_d5, f_d6, f_d7, f_d8, f_d9 =
+  0, 0, 0, 0, 0, 0, 0, 0, 0;;
+
+(* Do not eliminate abs but inst types *)
+
+let db = empty_db "test" ~eliminate_abs:false;;
+add_extra_rewrite db ("LET_DEF", LET_DEF);;
+add_extra_rewrite db ("LET_END_DEF", LET_END_DEF);;
+let db = add_thms db rules;;
+
+(* Do not include d6 and d8 since the inner matches are not eliminated *)
+let tm = `(\[x]. x) (d1 4) + 
+          d2 1 2 + 
+          d3 1 2 +
+          d4 (&7) 3 +
+          (\(x, y). x) (d7 (1, 2)) +
+          d9 (2, 3) 5`;;
+
+let consts = dependencies db tm ~inst_types:true;;
+assert_eq length consts 10;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `20`;;
+
+assert_rhs (f_d1 `1`) None `[]:(num)list`;;
+assert_rhs (f_d1 `4`) None `[4]`;;
+assert_rhs (f_d2 `1` `2`) None `1`;;
+assert_rhs (f_d2 `3` `4`) None `11`;;
+assert_exception (f_d2 `1` `1`) None;;
+assert_rhs (f_d3 `1` `0`) None `0`;;
+assert_rhs (f_d3 `3` `4`) None `7`;;
+assert_exception (f_d3 `2` `0`) None;;
+assert_rhs (f_d4_real `&1` `3`) None `6`;;
+assert_rhs (f_d7_num_num `3, 5`) None `5, 3`;;
+assert_rhs (f_d9_num `1, b:num` `a:num`) None `b:num`;;
+assert_rhs (f_d9_num `2, 7` `a:num`) None `a:num`;;
+assert_exception (f_d9_num `3, 3` `3`) None;;
+
+let f_d1, f_d2, f_d3, f_d4_real, f_d5, f_d6, f_d7_num_num, f_d8, f_d9_num =
+  0, 0, 0, 0, 0, 0, 0, 0, 0;;
+
+(* Do not eliminate abs and do not inst types *)
+
+let db = empty_db "test" ~eliminate_abs:false;;
+add_extra_rewrite db ("LET_DEF", LET_DEF);;
+add_extra_rewrite db ("LET_END_DEF", LET_END_DEF);;
+let db = add_thms db rules;;
+
+let tm = `(\[x]. x) (d1 4) + 
+          d2 1 2 + 
+          d3 1 2 +
+          d4 (&7) 3 +
+          (\(x, y). x) (d7 (1, 2)) +
+          d9 (2, 3) 5`;;
+
+let consts = dependencies db tm ~inst_types:false;;
+assert_eq length consts 10;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `20`;;
+
+assert_rhs (f_d1 `1`) None `[]:(num)list`;;
+assert_rhs (f_d1 `4`) None `[4]`;;
+assert_rhs (f_d2 `1` `2`) None `1`;;
+assert_rhs (f_d2 `3` `4`) None `11`;;
+assert_exception (f_d2 `1` `1`) None;;
+assert_rhs (f_d3 `1` `0`) None `0`;;
+assert_rhs (f_d3 `3` `4`) None `7`;;
+assert_exception (f_d3 `2` `0`) None;;
+assert_rhs (f_d4 `&1` `3`) None `6`;;
+assert_rhs (f_d4 `a:A` `8`) None `16`;;
+assert_rhs (f_d7 `&3, b:B`) None `b:B, &3`;;
+assert_rhs (f_d9 `1, b:num` `a:num`) None `b:num`;;
+assert_rhs (f_d9 `2, &7` `a:real`) None `a:real`;;
+assert_exception (f_d9 `3, 3` `3`) None;;
+assert_exception (f_d9 `2, &7` `a:num`) None;;
+
+let f_d1, f_d2, f_d3, f_d4, f_d5, f_d6, f_d7, f_d8, f_d9 =
+  0, 0, 0, 0, 0, 0, 0, 0, 0;;
 
 (* Test db 1 *)
 
@@ -129,31 +322,33 @@ let db = add_thms (empty_db "test1") [
   "lambda5", lambda5; *)
 ];;
 
-dependencies db `FILTER (\x. ALL (\x. x > 2) [x]) [1;2;3]`;;
+set_rule db ~name:"num_eq" `(=):num->num->bool`;;
+let num_eq =
+  let const = `(=):num->num->bool` in
+  fun a b opt -> trans_opt opt (NUM_EQ_CONV (list_mk_comb (const, [a; b])));;
 
-List.iter (set_rule db) [`(=):A->A->bool`; `>`; `>=`];;
+(* dependencies db `FILTER (\x. ALL (\x. x > 2) [x]) [1;2;3]` *)
 
-write_rules_names db "out2.hl" [
-  "FILTER";
-]
-~term:`FILTER (\x. if x > 2 then T else F) [1;2;3;4325;452;345]`;;
-
-add_extra_rewrite db ("GSYM GT", GSYM GT);;
-write_rules_consts db "out2.hl" [
+write_rules_consts db "tests/out.hl" [
   [`>`; `>=`];
   [`FILTER:(num->bool)->(num)list->(num)list`];
 ]
 ~term:`FILTER (\x. if x > 2 then T else F) [1;2;3;4325;452;345]`;;
 
-needs "default_db.hl";;
-loadt "out2.hl";;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `[3; 4325; 452; 345]`;;
 
-set_extra_for_names db Extra_memo ["HD"; "TL"; "MAP"];;
-write_rules_names db "out2.hl" [
+set_extra_for_names db (Extra_memo Hashtbl_memo) ["HD"; "TL"; "MAP"];;
+write_rules_names db "tests/out.hl" [
   "HD"; "TL"; "MAP"; "ALL"; "EX"
 ] ~term:`EX ((=) 3) [1;2;3]`;;
 
-loadt "out2.hl";;
+loadt "tests/out.hl";;
+assert_rhs (fun _ -> result) () `T`;;
+
+assert_rhs (f_HD `[a:real; &7]`) None `a:real`;;
+assert_rhs (f_TL `[a:A; b:A]`) None `[b:A]`;;
+assert_rhs (f_MAP (`HD:(num)list->num`, f_HD) `[[1]; [2; 3]]`) None `[1; 2]`;;
 
 (* Test db 2 *)
 
@@ -167,6 +362,11 @@ let lambda7 = new_definition `lambda7 n = (\x y. n) 2 n`;;
 let lambda8 = new_definition `lambda8 n = (\x. SUC ((\x. n) 3)) n`;;
 let lambda9 = new_definition `lambda9 f = (\x. f x + 3) (f 2)`;;
 let lambda10 = new_definition `lambda10 y = (\x. (x,y)) 3`;;
+let lambda11 = new_definition `lambda11 x f = (\f. f x) (f 3)`;;
+let lambda12 = new_definition `lambda12 x f = (\f. f x) (f (3 + x))`;;
+let lambda13 = new_definition `lambda13 f g x = (\f. f x + g x) (f g)`;;
+let lambda14 = new_definition `lambda14 f g x = (\f. f x + g x) (f (SUC x) g)`;;
+let lambda15 = new_definition `lambda15 f g x = (\f. f x + g x x) (f (SUC x) (g (SUC x)))`;;
 
 let db = add_thms (empty_db "test") [
   "ARITH_SUC", ARITH_SUC, [];
@@ -175,39 +375,41 @@ let db = add_thms (empty_db "test") [
   "lambda1", lambda1, [];
   "lambda2", lambda2, [];
   "lambda3", lambda3, [];
+  "lambda4", lambda4, [];
+  "lambda5", lambda5, [];
   "lambda6", lambda6, [];
   "lambda7", lambda7, [];
   "lambda8", lambda8, [];
   "lambda9", lambda9, [];
   "lambda10", lambda10, [];
+  "lambda11", lambda11, [];
+  "lambda12", lambda12, [];
+  "lambda13", lambda13, [];
+  "lambda14", lambda14, [];
+  "lambda15", lambda15, [];
 ];;
 
-loadt "eval_compile.hl";;
-
-write_rules_names db "out2.hl" [
-  "SUC"; "+"; 
-  (* "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10"; *)
-  "lambda7"
+write_rules_names db "tests/out.hl" [
+  "SUC"; "+"; "*";
+  "lambda1"; "lambda2"; "lambda3"; "lambda4"; "lambda5";
+  "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10";
+  "lambda11"; "lambda12"; "lambda13"; "lambda14"; "lambda15";
 ]
 ~term:`lambda7 (a:A)`;;
 
-loadt "out2.hl";;
+loadt "tests/out.hl";;
+assert_eq concl result `lambda7 a = (a:A)`;;
 
-write_rules_consts db "out2.hl" [
-  [`SUC`; `+`]; 
-  [`lambda6`];
-]
-~term:`lambda6 4`;;
-
-loadt "out2.hl";;
-
-compile_rules db (get_entries db ["lambda1"; "lambda2"; "lambda3"])
-    |> print_expr Format.std_formatter;;
-
+assert_rhs (f_lambda1 `2` `5`) None `7`;;
+assert_rhs (f_lambda2 `3` `7`) None `18`;;
+assert_rhs (f_lambda3 `3` `7`) None `28`;;
+assert_rhs (f_lambda4 `&3`) None `&3`;;
+assert_rhs (f_lambda5 (`SUC`, f_SUC) `3, &8`) None `4`;;
+(* assert_rhs (f_lambda6 ()) *)
 
 (* Test db 3 *)
 
-let APPEND' = INST_TYPE[`:num`, `:A`] APPEND;;
+(* let APPEND' = INST_TYPE[`:num`, `:A`] APPEND;;
 let MAP' = INST_TYPE[`:num`, `:A`; `:num`, `:B`] MAP;;
 let my_map = new_definition `my_map (l:(num)list) = MAP SUC l`;;
 let my_map2 = new_definition `my_map2 (l:(num)list) = MAP ((+) 2) l`;;
@@ -262,427 +464,6 @@ let t0 = `:(A->B)->(A)list->(B)list` and
 
 type_match t0 t3 [];;
 type_match t1 t3 [];;
-type_match t2 t3 [];;
+type_match t2 t3 [];; *)
 
-
-#load "unix.cma";;
-
-let test n f a =
-  let start = Unix.gettimeofday() in
-  let r = f a in
-  for i = 2 to n do
-    ignore (f a)
-  done;
-  let finish = Unix.gettimeofday() in
-  r, finish -. start;;
-
-(* 0.277 *)
-test 10000 f_SUC `255`;;
-(* 0.084 *)
-test 10000 NUM_SUC_CONV `SUC 255`;;
-
-(* 0.354 s*)
-test 10000 (f_ADD `100`) `248294`;;
-test 10000 NUM_ADD_CONV `100 + 248294`;;
-
-test 10000 (f_MAP (`SUC`, f_SUC)) `[0;1;2;3;4;5]`;;
-test 3000000 (map succ) [0;1;2;3;4;5];;
-
-
-let th = last (split_thm ARITH_MULT);;
-let m_var = `m:num` and
-    n_var = `n:num`;;
-
-let [m'_var; n'_var] = frees (concl th);;
-
-let m_tm = `1` and n_tm = `2`;;
-
-(* 0.21s *)
-test 100000 (INST[m_tm, m_var; n_tm, n_var]) th;;
-(* 0.190s *)
-test 100000 (INST[m_tm, m'_var; n_tm, n'_var]) th;;
-
-
-compile_term db "t" `MAP (\x. 1 + x) [1;2;3]` |> print_expr Format.std_formatter;;
-
-let t =
-  let tm = `MAP ((+) 1) [1; 2; 3]` in
-  let op, a2 = dest_comb tm in
-  let op, a1 = dest_comb op in
-  let a1 = (a1, fun tm1 ->
-                  let op, a1 = dest_comb a1 in
-                  f_ADD a1 tm1) in
-  f_MAP a1 a2;;
-
-(* 0.861 *)
-(* 0.934 if standardize is disabled *)
-test 20000 (f_num_MAP (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
-
-(* 2.302 *)
-test 20000 (f_MAP1 (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
-
-(* 2.140 *)
-test 20000 (f_MAP2 (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
-
-test 20000 (f_MAP (`SUC`, f_SUC)) `[1;2;3;4;5]`;;
-
-
-(* Hash table tests *)
-
-let tms = Array.init 10000 (fun i -> mk_small_numeral i);;
-let cache1 = 
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i tm ->
-    Hashtbl.add cache tm i) tms;
-  cache;;
-
-let strs = Array.init 10000 (fun i -> string_of_term tms.(i));;
-let cache2 = 
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i s ->
-    Hashtbl.add cache s i) strs;
-  cache;;
-
-let ll = Array.to_list @@ Array.init 1000 (fun i -> Hashtbl.hash tms.(i));;
-length ll;;
-(* 16 *)
-length (setify ll);;
-
-let rec key_of_term tm =
-  match tm with
-  | Var (name, _) -> "Var[" ^ name ^ "]"
-  | Const (name, _) -> "Const[" ^ name ^ "]"
-  | Comb (l, r) -> "Comb[" ^ key_of_term l ^ ";" ^ key_of_term r ^ "]"
-  | Abs (Var(name, _), b) -> "Abs[" ^ name ^ ";" ^ key_of_term b ^ "]"
-  | _ -> failwith "impossible";;
-
-let rec hash_string_of_term tm =
-  match tm with
-  | Var (name, _) -> name
-  | Const (name, _) -> name
-  | Comb (l, r) -> hash_string_of_term l ^ hash_string_of_term r
-  | Abs (Var(name, _), b) -> name ^ hash_string_of_term b
-  | _ -> failwith "impossible";;
-
-let hash_string_of_term =
-  let rec hash = function
-  | Var (name, _) | Const (name, _) -> name
-  | Comb (l, r) | Abs (l, r) -> hash l ^ hash r in
-  hash;;
-
-let rec hash_of_term tm =
-  match tm with
-  | Var (name, _) | Const (name, _) -> Hashtbl.hash name
-  | Comb (l, r) -> hash_of_term l lxor hash_of_term r
-  | Abs (v, b) -> hash_of_term v lxor hash_of_term b;;
-
-let hash_of_term2 =
-  let rec hash = function
-    | Var _ | Const _ -> 31
-    | Comb (l, r) | Abs (l, r) -> hash l * 47 + hash r * 7 in
-  hash;;
-
-let rec hash_string_of_term3 =
-  let rec hash n = function
-  | _ when n <= 0 -> ""
-  | Var (name, _) | Const (name, _) -> name
-  | Comb (l, r) | Abs (l, r) -> hash (n - 1) l ^ hash (n - 1) r in
-  hash;;
-
-
-(* slower than hash_string_of_term *)
-let hash_string_of_term2 tm =
-  let buf = Buffer.create 100 in
-  let rec hash = function
-  | Var (name, _) | Const (name, _) -> Buffer.add_string buf name
-  | Comb (l, r) | Abs (l, r) -> hash l; hash r in
-  hash tm; 
-  Buffer.contents buf;;
-
-let hash_string_of_term2 =
-  let rec hash buf = function
-  | Var (name, _) | Const (name, _) -> Buffer.add_string buf name
-  | Comb (l, r) | Abs (l, r) -> hash buf l; hash buf r in
-  fun tm ->
-    let buf = Buffer.create 100 in
-    hash buf tm; Buffer.contents buf;;
-
-
-module Term_hash = struct
-  type t = term
-  let equal t1 t2 = t1 = t2
-  (* let hash t = Hashtbl.hash (string_of_term t) *)
-  let hash t = Hashtbl.hash (hash_string_of_term t)
-  (* let hash t = hash_of_term t *)
-  (* let hash t = hash_of_term2 t *)
-  (* let hash t = Hashtbl.hash (hash_string_of_term3 20 t) *)
-end;;
-
-module Term_hashtbl = Hashtbl.Make(Term_hash);;
-
-let setify_terms tms =
-  let hash = Term_hashtbl.create 100000 in
-  List.iter (fun tm -> Term_hashtbl.replace hash tm 1) tms;
-  Term_hashtbl.fold (fun tm _ r -> tm :: r) hash [];;
-
-let cache3 =
-  let cache = Term_hashtbl.create 10000 in
-  Array.iteri (fun i tm -> Term_hashtbl.add cache tm i) tms;
-  cache;;
-
-let cache4 = 
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i t ->
-    Hashtbl.add cache (hash_string_of_term t) i) tms;
-  cache;;
-
-let cache4_key = 
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i t ->
-    Hashtbl.add cache (key_of_term t) i) tms;
-  cache;;
-
-
-let cache4_tuple =
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i t ->
-    let t2 = tms.(if i = 0 then 9999 else i - 1) in
-    Hashtbl.add cache (hash_string_of_term t, hash_string_of_term t2) i) tms;
-  cache;;
-
-let cache4_list =
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i t ->
-    let t2 = tms.(if i = 0 then 9999 else i - 1) in
-    Hashtbl.add cache [hash_string_of_term t; hash_string_of_term t2] i) tms;
-  cache;;
-
-let cache4_string =
-  let cache = Hashtbl.create 10000 in
-  Array.iteri (fun i t ->
-    let t2 = tms.(if i = 0 then 9999 else i - 1) in
-    Hashtbl.add cache (hash_string_of_term t ^ ";" ^ hash_string_of_term t2) i) tms;
-  cache;;
-
-
-Random.init 0;;
-
-let f1 () =
-  Hashtbl.find cache1 tms.(Random.int 10000);;
-
-let f2 () =
-  let tm = tms.(Random.int 10000) in
-  Hashtbl.find cache2 (string_of_term tm);;
-
-let f3 () =
-  Term_hashtbl.find cache3 tms.(Random.int 10000);;
-
-let f4 () =
-  let tm = tms.(Random.int 10000) in
-  Hashtbl.find cache4 (hash_string_of_term tm);;
-
-let f4_key () =
-  let tm = tms.(Random.int 10000) in
-  Hashtbl.find cache4_key (key_of_term tm);;
-
-let f4_tuple () =
-  let i = Random.int 9999 + 1 in
-  let tm = tms.(i) in
-  let tm2 = tms.(i - 1) in
-  Hashtbl.find cache4_tuple (hash_string_of_term tm, hash_string_of_term tm2);;
-
-let f4_list () =
-  let i = Random.int 9999 + 1 in
-  let tm = tms.(i) in
-  let tm2 = tms.(i - 1) in
-  Hashtbl.find cache4_list [hash_string_of_term tm; hash_string_of_term tm2];;
-
-let f4_string () =
-  let i = Random.int 9999 + 1 in
-  let tm = tms.(i) in
-  let tm2 = tms.(i - 1) in
-  Hashtbl.find cache4_string (hash_string_of_term tm ^ ";" ^ hash_string_of_term tm2);;
-
-
-(* 1.148s *)
-test 10000 f1 ();;
-(* 0.112s *)
-test 10000 f2 ();;
-(* 4.861s with hash t = Hashtbl.hash t *)
-(* 0.128s with hash t = Hashtbl.hash (string_of_term t) *)
-(* 0.045s with hash t = Hashtbl.hash (hash_string_of_term t) *)
-(* 4.853s with hash t = hash_of_term t *)
-(* 0.061s with hash t = Hashtbl.hash (hash_string_of_term3 20 t) *)
-test 10000 f3 ();;
-
-(* 0.024s *)
-test 10000 f4 ();;
-
-(* 0.095s *)
-test 10000 f4_key ();;
-
-(* 0.348s *)
-test 100000 f4_tuple ();;
-(* 0.352s *)
-test 100000 f4_list ();;
-(* 0.356s *)
-test 100000 f4_string ();;
-
-reset_all_counters();;
-get_all_counters();;
-
-standardize_list();;
-
-(* Test strong and weak memos *)
-
-let tms = Array.init 10000 (fun i -> mk_small_numeral i);;
-let strs = Array.init 10000 (fun i -> string_of_term tms.(i));;
-
-clear_all_memos();;
-clear_weak_memos();;
-let memo = create_memo "test";;
-let weak_memo = create_weak_memo "test";;
-
-unset_jrh_lexer;;
-module Memo_hash = Ephemeron.K1.Make (
-  struct
-    type t = string
-    let equal = (=)
-    let hash = Hashtbl.hash
-  end);;
-set_jrh_lexer;;
-
-module Weak_set = Weak.Make (
-  struct
-    type t = string
-    let equal = (=)
-    let hash = Hashtbl.hash
-  end);;
-
-module Assoc = struct
-  let rec next_pow2 x n =
-    if x >= n || x * 2 > Sys.max_array_length then x
-    else next_pow2 (2 * x) n
-
-  let create n = Array.make (next_pow2 16 n) None
-
-  let clear h = Array.fill h 0 (Array.length h) None
-
-  let index h key = Hashtbl.hash key land (Array.length h - 1)
-
-  let next_index h i = (i * 17) land (Array.length h - 1)
-
-  let add h key v =
-    let rec add_aux n i =
-      match h.(i) with
-      | _ when n <= 0 -> h.(i) <- Some (key, v)
-      | None -> h.(i) <- Some (key, v)
-      | Some (k, _) ->
-        if k = key then h.(i) <- Some (key, v)
-        else add_aux (n - 1) (next_index h i) in
-    let i = index h key in
-    add_aux 2 i
-
-  let find h key =
-    let rec find_aux n i =
-      match h.(i) with
-      | _ when n < 0 -> raise Not_found
-      | None -> find_aux (n - 1) (next_index h i)
-      | Some (k, v) ->
-        if k = key then v
-        else find_aux (n - 1) (next_index h i) in
-    let i = index h key in
-    find_aux 2 i
-end;;
-
-let memo = Hashtbl.create 10000;;
-let weak_memo = Memo_hash.create 10000;;
-let memo2 = Hashtbl.create 10000;;
-let assoc_memo = Assoc.create 10000;;
-let lru_memo = Assoc_lru.create 10000;;
-
-
-let replace2 key v =
-  let w = Weak.create 1 in
-  Weak.set w 0 (Some v);
-  Hashtbl.replace memo2 key w;;
-
-let find2 key =
-  let w = Hashtbl.find memo2 key in
-  match Weak.get w 0 with
-  | Some v -> v
-  | None -> raise Not_found;;
-
-let keys = ref [];;
-let keys = Weak_set.create 10000;;
-
-let test_memo k find add () =
-  let i = Random.int k in
-  let key = string_of_int i in
-  try find key
-  with Not_found ->
-    let lhs = mk_binary "+" (mk_small_numeral i, mk_small_numeral i) in
-    let rhs = mk_small_numeral (2 * i) in
-    let v = ARITH_RULE (mk_eq (lhs, rhs)) in
-    add key v;
-    (* keys := key :: !keys; *)
-    (* Weak_set.add keys key; *)
-    v;;
-
-Hashtbl.clear memo;;
-Hashtbl.clear memo2;;
-Memo_hash.clear weak_memo;;
-Assoc.clear assoc_memo;;
-Assoc_lru.clear lru_memo;;
-
-(* 1.302 *)
-test 3000 (test_memo 200 (fun _ -> raise Not_found) (fun _ _ -> ())) ();;
-(* 0.112 *)
-test 3000 (test_memo 200 (Hashtbl.find memo) (Hashtbl.replace memo)) ();;
-(* 0.967 *)
-test 3000 (test_memo 200 (Memo_hash.find weak_memo) (Memo_hash.replace weak_memo)) ();;
-(* 2.289 *)
-test 30000 (test_memo 200 (Memo_hash.find weak_memo) (Memo_hash.replace weak_memo)) ();;
-(* 1.226 *)
-test 3000 (test_memo 200 find2 add2) ();;
-(* 0.105 *)
-test 3000 (test_memo 200 (Assoc.find assoc_memo) (Assoc.add assoc_memo)) ();;
-(* 0.107 *)
-test 3000 (test_memo 200 (Assoc_lru.find lru_memo) (Assoc_lru.add lru_memo)) ();;
-assoc_memo;;
-
-replace2 "x" TRUTH;;
-find2 "5";;
-Hashtbl.fold (fun k v r -> (k, Weak.get v 0) :: r) memo2 [];;
-
-let add_vals f =
-  Array.iteri (fun i tm -> f [strs.(i)] (REFL tm)) tms;;
-
-add_vals (Hashtbl.add memo);;
-add_vals (Memo_hash.add weak_memo);;
-
-Hashtbl.length memo;;
-Memo_hash.length weak_memo;;
-
-Hashtbl.find memo ["1"];;
-Memo_hash.find weak_memo [strs.(999)];;
-
-Memo_hash.find weak_memo ["9005"];;
-Memo_hash.fold (fun k v r -> (k, v) :: r) weak_memo [];;
-Memo_hash.stats_alive weak_memo;;
-Hashtbl.stats memo;;
-Memo_hash.stats weak_memo;;
-
-let wa = Weak.create 10000;;
-Array.iteri (fun i tm -> 
-  Weak.set wa i (Some tm)
-  (* Weak.set wa i (Some (string_of_int i)) *)
-  ) tms;;
-let s = ref 0 in
-for i = 0 to 9999 do
-  if Weak.check wa i then incr s
-done; !s;;
-Weak.get wa 1000;;
-
-Gc.compact();;
 

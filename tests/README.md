@@ -7,3 +7,5 @@
 - [`test_merge_sort_compiled.hl`](test_merge_sort_compiled.hl)
 
 ## Eval
+
+- [`test_compile.hl`](test_compile.hl)

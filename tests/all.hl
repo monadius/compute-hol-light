@@ -1,4 +1,6 @@
 needs "tests/common.hl";;
 
+needs "tests/test_compile.hl";;
+
 needs "tests/test_arith.hl";;
 needs "tests/test_merge_sort_compiled.hl";;
