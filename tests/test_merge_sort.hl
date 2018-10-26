@@ -1,3 +1,4 @@
+needs "tests/common.hl";;
 needs "compute_hol4.hl";;
 
 let le_nat_def = define
@@ -41,7 +42,7 @@ let list2tree_def = define
 let merge_sort_def = define
   `merge_sort l = tree2list (list2tree l)`;;
 
-(* Example *)
+(* Tests *)
 
 let n1 = `SUC 0`;;
 let n2 = mk_comb (`SUC`, n1);;
@@ -80,7 +81,6 @@ let l9600_def  = define `L9600 = double L4800 `;;
 let l19200_def = define `L19200 = double L9600 `;;
 let l38400_def = define `L38400 = double L19200 `;;
 
-
 let sort_thms = [
   le_nat_def; append_def; double_def; triple_def;
   merge_def; tree2list_def; insTree_def; list2tree_def;
@@ -93,25 +93,32 @@ let sort_thms = [
 ];;
 
 let rws = 
-  let rws = bool_compset() in
-  add_thms sort_thms rws; rws;;
+  let rws = Compute.bool_compset () in
+  Compute.add_thms sort_thms rws; rws;;
 
+let norm q = (Compute.CBV_CONV rws) q;;
+let norm_wk q = (Compute.WEAK_CBV_CONV rws) q;;
+let norm0 q = ignore (norm q);;
+let norm_wk0 q = ignore (norm_wk q);;
 
-let norm q = time (CBV_CONV rws) q;;
-let norm0 q =
-  let _ = time (CBV_CONV rws) q in ();;
-let norm0_wk q =
-  let _ = time (WEAK_CBV_CONV rws) q in ();;
+reset_test_results();;
 
-(*
-(* 0.3s *)
-norm0 `merge_sort L100`;;
-(* 0.7s *)
-norm0 `merge_sort L200`;;
-(* 1.9s *)
-norm0 `merge_sort L400`;;
-(* 11.8s *)
-norm0 `merge_sort L1200`;;
-(* 41.3s *)
-norm0 `merge_sort L2400`;;
-*)
+assert_noexception ~name:"100" norm `merge_sort L100`;;
+assert_noexception ~name:"100wk" norm_wk `merge_sort L100`;;
+
+(* 0.253 *)
+assert_noexception ~name:"100" norm0 `merge_sort L100`;;
+(* 0.265 *)
+assert_noexception ~name:"100wk" norm_wk0 `merge_sort L100`;;
+
+(* 0.717 *)
+assert_noexception ~name:"200" norm0 `merge_sort L200`;;
+(* 1.947 *)
+assert_noexception ~name:"400" norm0 `merge_sort L400`;;
+(* 12.137 *)
+assert_noexception ~name:"1200" norm0 `merge_sort L1200`;;
+(* 42.176 *)
+assert_noexception ~name:"2400" norm0 `merge_sort L2400`;;
+
+time_results();;
+formatted_results();;

@@ -1,3 +1,5 @@
+needs "tests/common.hl";;
+needs "compute_hol4.hl";;
 needs "eval_compile.hl";;
 
 let le_nat_def = define
@@ -39,7 +41,63 @@ let list2tree_def = define
 let merge_sort_def = define
   `merge_sort l = tree2list (list2tree l)`;;
 
-let db = add_thms (empty_db ()) [
+let n1 = `SUC 0`;;
+let n2 = mk_comb (`SUC`, n1);;
+let n3 = mk_comb (`SUC`, n2);;
+let n4 = mk_comb (`SUC`, n3);;
+
+let l0 = `[] : num list`;;
+
+let app_l4 l = 
+  end_itlist mk_cons [n2; `0`; n1; `0`; l];;
+
+let app_l20 l =
+  end_itlist mk_cons [n2; `0`; n1; `0`; n1; n3; n4;
+                      n1; `0`; n1; n3; `0`; n1; n3;
+                      n4; n2; `0`; n1; `0`; n1; l];;
+
+
+let l2_def = define (mk_eq (`L2 : num list`, mk_list ([n2; `0`], `:num`)));;
+let l4_def = define (mk_eq (`L4 : num list`, app_l4 l0));;
+let l8_def = define (mk_eq (`L8 : num list`, funpow 2 app_l4 l0));;
+let l12_def = define (mk_eq (`L12 : num list`, funpow 3 app_l4 l0));;
+let l16_def = define (mk_eq (`L16 : num list`, funpow 4 app_l4 l0));;
+let l20'_def = define (mk_eq (`L20' : num list`, funpow 5 app_l4 l0));;
+let l40'_def = define `L40' = double L20'`;;
+let l80'_def = define `L80' = double L40'`;;
+
+let l20_def    = define (mk_eq (`L20 : num list`, app_l20 l0));;
+let l40_def    = define `L40 = double L20`;;
+let l100_def   = define (mk_eq (`L100 : num list`, funpow 5 app_l20 l0));;
+let l200_def   = define `L200 = double L100`;;
+let l400_def   = define `L400 = double L200 `;;
+let l1200_def  = define `L1200 = triple L400 `;;
+let l2400_def  = define `L2400 = double L1200 `;;
+let l4800_def  = define `L4800 = double L2400 `;;
+let l9600_def  = define `L9600 = double L4800 `;;
+let l19200_def = define `L19200 = double L9600 `;;
+let l38400_def = define `L38400 = double L19200 `;;
+
+let sort_thms = [
+  le_nat_def; append_def; double_def; triple_def;
+  merge_def; tree2list_def; insTree_def; list2tree_def;
+  merge_sort_def;
+  l2_def; l4_def; l8_def; l12_def; l16_def;
+  l20'_def; l40'_def; l80'_def;
+  l20_def; l40_def; l100_def; l200_def; l400_def;
+  l1200_def; l2400_def; l4800_def; l9600_def;
+  l19200_def; l38400_def
+];;
+
+let rws = 
+  let rws = Compute.bool_compset () in
+  Compute.add_thms sort_thms rws; rws;;
+
+let norm q = (Compute.CBV_CONV rws) q;;
+let norm0 q = ignore (norm q);;
+
+
+let db = add_thms (empty_db "merge") [
   "le_nat_def", le_nat_def, [];
   "append_def", append_def, [];
   "double_def", double_def, [];
@@ -51,57 +109,60 @@ let db = add_thms (empty_db ()) [
   "merge_sort_def", merge_sort_def, [];
 ];;
 
-write_rules_names db "out2.hl" [
+write_rules_names db "tests/out_merge.hl" [
   "le_nat"; "append"; "double"; "triple"; "merge";
   "tree2list"; "insTree"; "list2tree"; "merge_sort"
 ];;
 
-let true_tm = standardize_tm `T`;;
-let COND_T = prove(`(if T then (t:A) else e) = t`, REWRITE_TAC[COND_CLAUSES]);;
-let COND_F = prove(`(if F then (t:A) else e) = e`, REWRITE_TAC[COND_CLAUSES]);;
-
-needs "out2.hl";;
-needs "test_merge_sort.hl";;
+loadt "tests/out_merge.hl";;
 
 let run_test ?(cbv = true) tm =
+  let name = string_of_term tm in
   let tm_th = norm tm in
   let tm = rand (concl tm_th) in
-  let _ = time f_merge_sort tm in
+  let _, time1, _ = assert_noexception ~name:name (f_merge_sort tm) None in
   let tm' = mk_comb (`merge_sort`, tm) in
-  let _ = if cbv then norm0 tm' in
-  ();;
+  let _, time2, _ =
+    if cbv then assert_noexception ~name:(name ^ "_cbv") norm0 tm'
+    else ((), -1.0, true) in
+  time1, time2;;
+
+reset_test_results();;
 
 (*
-f_merge_sort: 0.112s (0.084s)
+f_merge_sort: 0.069s
 Eval1:        0.232s
 CBV_CONV:     1.844s
 *)
 run_test `L400`;;
 
 (*
-f_merge_sort: 0.412s (0.284s)
+f_merge_sort: 0.269s
 Eval1:        0.864s
-CBV_CONV:     11.444s
+CBV_CONV:     11.278s
 *)
 run_test `L1200`;;
 
 (*
-f_merge_sort: 0.88s (0.656s)
+f_merge_sort: 0.585s
 Eval1:        1.984s
 CBV_CONV:     41.464s
 *)
 run_test `L2400`;;
 
 (*
-f_merge_sort: 2.096s (1.472s)
+f_merge_sort: 1.387s
 Eval1:        4.38s
 CBV_CONV:     -
 *)
 run_test ~cbv:false `L4800`;;
 
 (*
-f_merge_sort: 4.544s (3.288s)
+f_merge_sort: 3.000s
 Eval1:        10.404s
 CBV_CONV:     -
 *)
 run_test ~cbv:false `L9600`;;
+
+time_results();;
+formatted_results();;

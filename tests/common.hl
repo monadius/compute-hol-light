@@ -70,3 +70,12 @@ let assert_exception ?(name = "assert_exception") ?(n = 1) f arg =
   with _ ->
     report_result name (-1.0) true;
     true, -1.0, true;;
+
+let assert_noexception ?(name = "assert_noexception") ?(n = 1) f arg =
+  try
+    let result, time = test n f arg in
+    report_result name time true;
+    result, time, true
+  with e ->
+    report_result name (-1.0) false;
+    raise e;;
