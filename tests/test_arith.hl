@@ -1,28 +1,167 @@
+needs "tests/common.hl";;
 needs "compute_hol4.hl";;
-
-open Compute;;
+needs "eval_compile.hl";;
 
 let rws =
-  let rws = bool_compset() in
-  add_thms [ARITH] rws; rws;;
+  let rws = Compute.bool_compset() in
+  Compute.add_thms [ARITH] rws; rws;;
 
-let norm q = time (CBV_CONV rws) q;;
-let norm0 q =
-  let _ = time (CBV_CONV rws) q in ();;
+let norm tm = Compute.CBV_CONV rws tm;;
 
-let test conv t =
-  let th = norm t in
-  let th2 = time conv t in
-  th, th = th2;;
+(* ARITH_MULT does not normalize results *)
+let ARITH_MULT' = prove
+  (`NUMERAL m * NUMERAL n = NUMERAL (m * n) /\
+    _0 * _0 = _0 /\
+    _0 * BIT0 n = _0 /\
+    _0 * BIT1 n = _0 /\
+    BIT0 n * _0 = _0 /\
+    BIT1 n * _0 = _0 /\
+    BIT1 _0 * n = n /\
+    n * BIT1 _0 = n /\
+    BIT0 m * BIT0 n = BIT0 (BIT0 (m * n)) /\
+    BIT0 m * BIT1 n = BIT0 m + BIT0 (BIT0 (m * n)) /\
+    BIT1 m * BIT0 n = BIT0 n + BIT0 (BIT0 (m * n)) /\
+    BIT1 m * BIT1 n = BIT1 m + BIT0 n + BIT0 (BIT0 (m * n))`,
+  REWRITE_TAC[ARITH_MULT] THEN
+    SUBGOAL_THEN `BIT1 _0 = 1` (fun th -> ONCE_REWRITE_TAC[th]) THENL [
+      REWRITE_TAC[NUMERAL];
+      REWRITE_TAC[MULT_CLAUSES]
+    ]);;
 
-(* norm = 0.008s;
-   conv = 0s      *)
-test NUM_ADD_CONV `12342409999343999142452358034978092341 + 34341979797994228503423532504`;;
+let db = add_thms (empty_db "arith") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "ARITH_PRE", ARITH_PRE, [];
+  "ARITH_ADD", ARITH_ADD, [];
+  "ARITH_SUB", ARITH_SUB, [];
+  "ARITH_MULT'", ARITH_MULT', [];
+  "ARITH_EXP", ARITH_EXP, [];
+  "ARITH_LT", ARITH_LT, [];
+  "ARITH_LE", ARITH_LE, [];
+  "ARITH_GT", ARITH_GT, [];
+  "ARITH_GE", ARITH_GE, [];
+];;
 
-(* norm = 0.152s;
-   conv = 0.004s  *)
-test NUM_MULT_CONV `72573248583243235 * 353958353255329228`;;
+let consts = dependencies db ~inst_types:false
+  `1 - 2 < 1 /\ 1 EXP 2 > 2`;;
+write_rules_consts db "tests/out.hl" consts;;
+loadt "tests/out.hl";;
 
-(* norm = 8.356s;
-   conv = 0.032s  *)
-test NUM_EXP_CONV `7 EXP 200`;;
+let examples = [
+  `100 + 231`;
+  `0 + 0`;
+  `23 + 0`;
+  `0 + 23`;
+  `100 - 231`;
+  `231 - 100`;
+  `100 * 231`;
+  `1 * 1`;
+  `0 * 100`;
+  `100 * 0`;
+  `SUC 255`;
+  `SUC 0`;
+  `SUC 4`;
+  `PRE 0`;
+  `PRE 100`;
+  `PRE 99`;
+  `2 EXP 3`;
+  `0 EXP 10`;
+  `1 EXP 100`;
+  `21 EXP 2`;
+  `100 EXP 0`;
+  `2 < 3`;
+  `3 < 2`;
+  `4 = 4`;
+  `4 = 3`;
+  `2 <= 3`;
+  `3 <= 3`;
+  `3 <= 2`;
+  `2 > 3`;
+  `3 > 2`;
+  `2 >= 3`;
+  `3 >= 3`;
+  `3 >= 2`;
+];;
+
+let test_norm ex =
+  let answer = NUM_REDUCE_CONV ex in
+  assert_eq ~name:(string_of_term ex) norm ex answer;;
+
+let test_eval ex =
+  let table = [
+    (`SUC`, function [a] -> f_SUC a None | _ -> failwith "error");
+    (`PRE`, function [a] -> f_PRE a None | _ -> failwith "error");
+    (`+`, function [a; b] -> f_ADD a b None | _ -> failwith "error");
+    (`-`, function [a; b] -> f_SUB a b None | _ -> failwith "error");
+    (`*`, function [a; b] -> f_MUL a b None | _ -> failwith "error");
+    (`EXP`, function [a; b] -> f_EXP a b None | _ -> failwith "error");
+    (`(=):num->num->bool`, function [a; b] -> f_EQ_num a b None | _ -> failwith "error");
+    (`<`, function [a; b] -> f_LT a b None | _ -> failwith "error");
+    (`<=`, function [a; b] -> f_LE a b None | _ -> failwith "error");
+    (`>`, function [a; b] -> f_GT a b None | _ -> failwith "error");
+    (`>=`, function [a; b] -> f_GE a b None | _ -> failwith "error");
+  ] in
+  let op, args = strip_comb ex in
+  let f = assoc op table in
+  let answer = NUM_REDUCE_CONV ex in
+  assert_eq ~name:(string_of_term ex) f args answer;;
+
+(* Basic tests *)
+
+reset_test_results();;
+
+let failed_basic_compute = 
+  map test_norm examples 
+  |> filter (fun (_, _, b) -> not b);;
+
+let failed_basic_eval =
+  map test_eval examples
+  |> filter (fun (_, _, b) -> not b);;
+
+(* Expression tests *)
+
+assert_rhs norm `PRE (100 + 3 * SUC 4) - 4 EXP 2` `98`;;
+assert_rhs norm `100 * 3 > 200 * 2 - 10 EXP 2` `F`;;
+
+formatted_results();;
+
+(* Performance tests *)
+
+let tm1 = `12342409999343999142452358034978092341` and
+    tm2 = `34341979797994228503423532504`;;
+
+let tm = mk_binary "+" (tm1, tm2);;
+(* 0.120 *)
+let expected, time0 = test 1000 NUM_ADD_CONV tm;;
+(* 9.347 (77 times slower) *)
+assert_eq ~n:1000 norm tm expected;;
+(* 0.375 (3 times slower) *)
+assert_eq ~n:1000 (f_ADD tm1 tm2) None expected;;
+
+let tm = mk_binary "*" (tm1, tm2);;
+(* 0.170 *)
+let expected, time0 = test 20 NUM_MULT_CONV tm;;
+(* 11.988 *)
+assert_eq ~n:20 norm tm expected;;
+(* 0.465 *)
+assert_eq ~n:20 (f_MUL tm1 tm2) None expected;;
+
+let tm = mk_binary "-" (tm1, tm2);;
+(* 0.0498 *)
+let expected, time0 = test 100 NUM_SUB_CONV tm;;
+(* 8.583 *)
+assert_eq ~n:100 norm tm expected;;
+(* 0.293 *)
+assert_eq ~n:100 (f_SUB tm1 tm2) None expected;;
+
+let tm1 = `73248` and
+    tm2 = `41`;;
+let tm = mk_binary "EXP" (tm1, tm2);;
+(* 0.175 *)
+let expected, time0 = test 10 NUM_EXP_CONV tm;;
+(* 51.260 *)
+assert_eq ~n:10 norm tm expected;;
+(* 1.167 *)
+assert_eq ~n:10 (f_EXP tm1 tm2) None expected;;
+
+formatted_results();;
