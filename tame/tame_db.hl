@@ -1,0 +1,211 @@
+needs "tame/tame_defs.hl";;
+needs "tame/tame_defs_unrolled.hl";;
+needs "tame/tame_db_support.hl";;
+
+let tame_rules = [
+  "APPEND_UNROLL8", APPEND_UNROLL8, [];
+  "map_of_DEF", map_of_DEF, [];
+  "the_DEF", the_DEF, [];
+  "is_none_DEF", is_none_DEF, [];
+  "funpow_UNROLL5", funpow_UNROLL5, [];
+  "nth_UNROLL15", nth_UNROLL15, [];
+  "fold_DEF", fold_DEF, [];
+  "rev_DEF", rev_DEF, [];
+  "upt_DEF", upt_DEF, [];
+  "zip_ALT", zip_ALT, [];
+  "null_DEF", null_DEF, [];
+  "last_DEF", last_DEF, [];
+  "maps_UNROLL7", maps_UNROLL7, [];
+  "foldl_DEF", foldl_DEF, [];
+  "foldr_ALT", foldr_ALT, [];
+  "concat_DEF", concat_DEF, [];
+  "filter_DEF", filter_DEF, [];
+  "member_DEF", member_DEF, [];
+  "rotate1_DEF", rotate1_DEF, [];
+  "rotate_ALT", rotate_ALT, [];
+  "bool_to_num_DEF", bool_to_num_DEF, [];
+  "count_UNROLL7", count_UNROLL7, [];
+  "hd_DEF", hd_DEF, [];
+  "tl_DEF", tl_DEF, [];
+  "list_ex_DEF", list_ex_DEF, [];
+  "remdups_DEF", remdups_DEF, [];
+  "remove1_DEF", remove1_DEF, [];
+  "map_UNROLL11", map_UNROLL11, [];
+  "pred_list_UNROLL11", pred_list_UNROLL11, [];
+  "replicate_DEF", replicate_DEF, [];
+  "gen_length_DEF", gen_length_DEF, [];
+  "map_filter_DEF", map_filter_DEF, [];
+  "list_update_DEF", list_update_DEF, [];
+  "all_interval_nat_DEF", all_interval_nat_DEF, [];
+  "size_list_UNROLL15", size_list_UNROLL15, [];
+  "fst_DEF", fst_DEF, [];
+  "snd_DEF", snd_DEF, [];
+  "mapAt_DEF", mapAt_DEF, [];
+  "splitAtRec_DEF", splitAtRec_DEF, [];
+  "splitAt_DEF", splitAt_DEF, [];
+  "between_ALT", between_ALT, [];
+  "minimall_ALT", minimall_ALT, [];
+  "replace_DEF", replace_DEF, [];
+  "removeKey_DEF", removeKey_DEF, [];
+  "removeKeyList_DEF", removeKeyList_DEF, [];
+
+  "vertices_face_DEF", vertices_face_DEF, [];
+  "final_face_DEF", final_face_DEF, [];
+  "faceListAt_DEF", faceListAt_DEF, [];
+  "facesAt_DEF", facesAt_DEF, [];
+  "tri_ALT", tri_ALT, [];
+  "quad_ALT", quad_ALT, [];
+  "faces_DEF", faces_DEF, [];
+  "graph_ALT", graph_ALT, [];
+  "degree_DEF", degree_DEF, [];
+  "except_ALT", except_ALT, [];
+  "finals_DEF", finals_DEF, [];
+  "heights_DEF", heights_DEF, [];
+  "height_DEF", height_DEF, [];
+  "nextElem_ALT", nextElem_ALT, [];
+  "setFinal_DEF", setFinal_DEF, [];
+  "nextVertex_ALT", nextVertex_ALT, [];
+  "neighbors_DEF", neighbors_DEF, [];
+  "nonFinals_DEF", nonFinals_DEF, [];
+  "vertextype_DEF", vertextype_DEF, [];
+  "finalVertex_DEF", finalVertex_DEF, [];
+  "final_graph_ALT", final_graph_ALT, [];
+  "nextVertices_DEF", nextVertices_DEF, [];
+  "countVertices_DEF", countVertices_DEF, [];
+  "directedLength_DEF", directedLength_DEF, [];
+  "vertices_graph_DEF", vertices_graph_DEF, [];
+
+  "tame10_ALT", tame10_ALT, [];
+  "tame11a_DEF", tame11a_DEF, [];
+  "tame11b_DEF", tame11b_DEF, [];
+  "tame12o_ALT", tame12o_ALT, [];
+  "tame10ub_DEF", tame10ub_DEF, [];
+  "excessTCount_DEF", excessTCount_DEF, [];
+  "squanderTarget_DEF", squanderTarget_DEF, [];
+  "squanderFace_ALT", squanderFace_ALT, [];
+  "squanderVertex_ALT", squanderVertex_ALT, [];
+  "maxGon_ALT", maxGon_ALT, [];
+  "seed_DEF", seed_DEF, [];
+  "duplicateEdge_DEF", duplicateEdge_DEF, [];
+  "containsUnacceptableEdgeSnd_ALT", containsUnacceptableEdgeSnd_ALT, [];
+  "containsUnacceptableEdge_ALT", containsUnacceptableEdge_ALT, [];
+  "containsDuplicateEdge_DEF", containsDuplicateEdge_DEF, [];
+
+  "alist_DEF", alist_DEF, [];
+  "values_DEF", values_DEF, [];
+  "lookup_DEF", lookup_DEF, [];
+  "rem_alist_DEF", rem_alist_DEF, [];
+  "update_DEF", update_DEF, [];
+
+  "minimalFace_ALT", minimalFace_ALT, [];
+  "minimalVertex_DEF", minimalVertex_DEF, [];
+  "listSum_DEF", listSum_DEF, [];
+  "heightsNewVertices_DEF", heightsNewVertices_DEF, [];
+  "replacefacesAt_DEF", replacefacesAt_DEF, [];
+  "split_face_ALT", split_face_ALT, [];
+  "splitFace_ALT", splitFace_ALT, [];
+  "makeFaceFinalFaceList_DEF", makeFaceFinalFaceList_DEF, [];
+  "makeFaceFinal_DEF", makeFaceFinal_DEF, [];
+  "subdivFacea_ALT", subdivFacea_ALT, [];
+  "subdivFace_DEF", subdivFace_DEF, [];
+
+  "enumAppend_DEF", enumAppend_DEF, [];
+  "enumBase_DEF", enumBase_DEF, [];
+  "enumerator_ALT", enumerator_ALT, [];
+  "enum_ALT", enum_ALT, [];
+
+  "hideDupsRec_DEF", hideDupsRec_DEF, [];
+  "hideDups_DEF", hideDups_DEF, [];
+  "indexToVertexList_DEF", indexToVertexList_DEF, [];
+  "notame_DEF", notame_DEF, [];
+  "excessAtType_ALT", excessAtType_ALT, [];
+  "excessAt_DEF", excessAt_DEF, [];
+  "faceSquanderLowerBound_DEF", faceSquanderLowerBound_DEF, [];
+  "deleteAround_ALT", deleteAround_ALT, [];
+  
+  "excessNotAtRec_ALT", excessNotAtRec_ALT, [];
+  "excessTable_ALT", excessTable_ALT, [];
+  "excessNotAt_ALT", excessNotAt_ALT, [];
+  "squanderLowerBound_DEF", squanderLowerBound_DEF, [];
+  "polysizes_ALT", polysizes_ALT, [];
+  "is_tame13a_ALT", is_tame13a_ALT, [];
+  "generatePolygonTame_ALT", generatePolygonTame_ALT, [];
+  "next_tame0_ALT", next_tame0_ALT, [];
+  "is_tame_DEF", is_tame_DEF, [];
+  "next_tame_ALT", next_tame_ALT, [];
+  "worklist_tree_aux_DEF", worklist_tree_aux_DEF, [];
+  "worklist_tree_ALT", worklist_tree_ALT, [];
+  "nof_vertices_ALT", nof_vertices_ALT, [];
+
+  "qsort_DEF", qsort_DEF, [];
+  "hash_ALT", hash_ALT, [];
+  "fgraph_DEF", fgraph_DEF, [];
+  "merge_ALT", merge_ALT, [];
+  "compat_DEF", compat_DEF, [];
+
+  "pr_iso_test_rec_ALT", pr_iso_test_rec_ALT, [];
+  "pr_iso_test_DEF", pr_iso_test_DEF, [];
+  "iso_test_DEF", iso_test_DEF, [];
+  "insert_mod_trie_ALT", insert_mod_trie_ALT, [];
+  (* "insert_mod2_trie_DEF", insert_mod2_trie_DEF;
+  "worklist_tree_coll_aux_trie_ALT", worklist_tree_coll_aux_trie_ALT;
+  "worklist_tree_coll_trie_DEF", worklist_tree_coll_trie_DEF;
+  "enum_filter_finals_ALT", enum_filter_finals_ALT; *)
+  "tameEnumFilter_ALT", tameEnumFilter_ALT, [];
+
+  "worklist_tree_bounded_ALT", worklist_tree_bounded_ALT, [];
+  "tameEnumFilterBounded_DEF", tameEnumFilterBounded_DEF, [];
+  "tameCountFinalsBounded_DEF", tameCountFinalsBounded_DEF, [];
+];;
+
+let tame_memo_consts = [
+(* set_extra_for_consts db (Extra_memo (Assoc_lru (10000, 2))) [ *)
+(* set_extra_for_consts db (Extra_memo Hashtbl_memo) [ *)
+  `size_list:(num)list->num`;
+  `excessAtType`;
+  `vertices_face`;
+  `heightsNewVertices`;
+  `upt`;
+  `nextVertex`;
+  `rev:(num)list->(num)list`;
+  `APPEND:(num)list->(num)list->(num)list`;
+  `nextVertices`;
+  `member:(num)list->num->bool`;
+  `enum`;
+  `splitAtRec:num->(num)list->(num)list->(num)list#(num)list`;
+  `map:(num->(num)list)->(num)list->((num)list)list`;
+  `map:((num)list->(num)list)->((num)list)list->((num)list)list`;
+  (* `bool_to_num`; *)
+  (* `fst:num#num->num`; *)
+  (* `is_none:(num#num)option->bool`; *)
+  (* `final_face`; *)
+  (* `nextElem:(num)list->num->num->num`; *)
+  (* `nth:(num)list->num->num`; *)
+  (* `faceListAt`; *)
+  (* `filter:(num#num->bool)->(num#num)list->(num#num)list`; *)
+  (* `removeKeyList:(num)list->(num#num)list->(num#num)list`; *)
+  (* `nth:((face)list)list->num->(face)list`; *)
+  (* `excessNotAtRec`; *)
+];;
+
+let tame_db ?(eliminate_abs = true)
+            ?(counters = true)
+            ?(memo = Some (Assoc_memo 10000))
+            ?(memo_consts = tame_memo_consts)
+            ?(inst_types = true)
+            ?(result = `tameEnumFilterBounded`)
+            rules =
+  let add_memo db =
+    match memo with
+    | None -> ()
+    | Some memo_type -> 
+      set_extra_for_consts db (Extra_memo memo_type) memo_consts in
+  let db = add_thms (tame_default_db ~eliminate_abs ()) rules in
+  let consts = dependencies db result ~inst_types in
+  add_memo db;
+  if counters then begin
+    set_extra_for_all db (Extra_counter 0);
+    set_extra_for_names db (Extra_counter 100) ["worklist_tree_bounded"];
+  end;
+  db, consts;;
+
