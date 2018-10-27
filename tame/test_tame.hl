@@ -231,10 +231,7 @@ let () = ();;
 let () =
   reset_all_counters();
   clear_arg_lists();
-  clear_all_memos();
-  clear_weak_memos();
-  clear_lru_memos();
-  clear_assoc_memos();;
+  clear_all_memos();;
 test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `100`)) None;;
 

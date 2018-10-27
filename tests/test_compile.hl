@@ -128,7 +128,7 @@ assert_eq length consts2 2;;
 
 let tm = `d8 1 2`;;
 let consts3 = dependencies db tm ~inst_types:true;;
-assert_eq length consts3 4;;
+assert_eq length consts3 5;;
 
 let tm = `d9 (1, x) [&7]`;;
 let consts4 = dependencies db tm ~inst_types:true;;
@@ -367,8 +367,10 @@ let lambda12 = new_definition `lambda12 x f = (\f. f x) (f (3 + x))`;;
 let lambda13 = new_definition `lambda13 f g x = (\f. f x + g x) (f g)`;;
 let lambda14 = new_definition `lambda14 f g x = (\f. f x + g x) (f (SUC x) g)`;;
 let lambda15 = new_definition `lambda15 f g x = (\f. f x + g x x) (f (SUC x) (g (SUC x)))`;;
+let f1 = new_definition `f1 f x = f x + x`;;
+let f2 = new_definition `f2 x f y = f x + f y`;;
 
-let db = add_thms (empty_db "test") [
+let rules = [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_ADD", ARITH_ADD, [];
   "ARITH_MULT", ARITH_MULT, [];
@@ -387,13 +389,20 @@ let db = add_thms (empty_db "test") [
   "lambda13", lambda13, [];
   "lambda14", lambda14, [];
   "lambda15", lambda15, [];
+  "f1", f1, [];
+  "f2", f2, [];
 ];;
+
+(* No abs elim and no type insts *)
+
+let db = add_thms (empty_db "test") rules;;
 
 write_rules_names db "tests/out.hl" [
   "SUC"; "+"; "*";
   "lambda1"; "lambda2"; "lambda3"; "lambda4"; "lambda5";
   "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10";
   "lambda11"; "lambda12"; "lambda13"; "lambda14"; "lambda15";
+  "f1"; "f2";
 ]
 ~term:`lambda7 (a:A)`;;
 
@@ -405,20 +414,25 @@ assert_rhs (f_lambda2 `3` `7`) None `18`;;
 assert_rhs (f_lambda3 `3` `7`) None `28`;;
 assert_rhs (f_lambda4 `&3`) None `&3`;;
 assert_rhs (f_lambda5 (`SUC`, f_SUC) `3, &8`) None `4`;;
-(* assert_rhs (f_lambda6 ()) *)
+assert_rhs (f_lambda6 `2`) None `5`;;
+assert_rhs (f_lambda7 `&3`) None `&3`;;
+assert_rhs (f_lambda8 `7`) None `8`;;
+assert_rhs (f_lambda9 (`SUC`, f_SUC)) None `7`;;
+assert_rhs (f_lambda10 `&3`) None `3, &3`;;
+assert_rhs (f_lambda11 `2` (`lambda1`, f_lambda1)) None `5`;;
+assert_rhs (f_lambda12 `2` (`lambda1`, f_lambda1)) None `7`;;
+assert_rhs (f_lambda13 (`f1`, f_f1) (`SUC`, f_SUC) `7`) None `23`;;
+assert_rhs (f_lambda14 (`f2:num->(num->num)->num->num`, f_f2) (`SUC`, f_SUC) `7`) None `25`;;
+assert_rhs (f_lambda15 (`f2:num->(num->num)->num->num`, f_f2) (`lambda1`, f_lambda1) `7`) None `45`;; 
 
 (* Test db 3 *)
 
-(* let APPEND' = INST_TYPE[`:num`, `:A`] APPEND;;
-let MAP' = INST_TYPE[`:num`, `:A`; `:num`, `:B`] MAP;;
-let my_map = new_definition `my_map (l:(num)list) = MAP SUC l`;;
-let my_map2 = new_definition `my_map2 (l:(num)list) = MAP ((+) 2) l`;;
-let my_map3 = new_definition `my_map3 n (l:(num)list) = MAP ((+) (SUC n)) l`;;
-let my_map4 = new_definition `my_map4 l = MAP (CONS 1) l`;;
-let my_map5 = new_definition `my_map5 l = MAP BIT1 l`;;
-let test_f = new_definition `test_f (f:(num->num)->(num)list->(num)list) g = f g [1;2]`;;
+let my_map = new_definition `my_map l = MAP SUC l`;;
+let my_map2 = new_definition `my_map2 l = MAP ((+) 2) l`;;
+let my_map3 = new_definition `my_map3 n l = MAP ((+) (SUC n)) l`;;
+let my_map4 = new_definition `my_map4 n l = MAP (CONS (SUC n)) l`;;
 
-let db = add_thms (empty_db ()) [
+let db = add_thms (empty_db "test") [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_PRE", ARITH_PRE, [];
   "ARITH_ADD", ARITH_ADD, [];
@@ -426,18 +440,24 @@ let db = add_thms (empty_db ()) [
   "ARITH_EQ", ARITH_EQ, [];
   "ARITH_GE", ARITH_GE, [];
   "ARITH_GT", ARITH_GT, [];
-  "APPEND'", APPEND', [];
-  "MAP'", MAP', [];
+  "MAP", MAP, [];
   "my_map", my_map, [];
   "my_map2", my_map2, [];
   "my_map3", my_map3, [];
   "my_map4", my_map4, [];
-  "my_map5", my_map5, [];
-  "test_f", test_f, [];
 ];;
 
-build_eval_tree db `HD`;;
+write_rules_names db "tests/out.hl" [
+  "SUC"; "+"; "MAP";
+  "my_map"; "my_map2"; "my_map3"; "my_map4";
+];;
 
+loadt "tests/out.hl";;
+
+assert_rhs (f_my_map `[0;5;3]`) None `[1;6;4]`;;
+assert_rhs (f_my_map2 `[0;5;3]`) None `[2;7;5]`;;
+assert_rhs (f_my_map3 `5` `[0;5;3]`) None `[6;11;9]`;;
+assert_rhs (f_my_map4 `5` `[[]; [1]; [1;2]; []]`) None `[[6]; [6;1]; [6;1;2]; [6]]`;;
 
 (* Other tests *)
 
@@ -445,17 +465,27 @@ let get_var var th =
   let tm = concl th in
   follow_path (find_path ((=) var) tm) tm;;
 
-let db = empty_db();;
+let db = empty_db "test";;
 set_rule db `/\`;;
 set_rule db `MAP`;;
 set_rule db `MAP:(num->B)->(num)list->(B)list`;;
 set_rule db `MAP:(A->num)->(A)list->(num)list`;;
 set_rule db `MAP:(num->B#C)->(num)list->(B#C)list`;;
-find_exact_entry db `MAP:(num->B)->(num)list->(B)list`;;
-find_most_specific_entry db `MAP:(num->B)->(num)list->(B)list`;;
-find_exact_entry db `MAP:(A->num)->(A)list->(num)list`;;
-find_most_specific_entry db `MAP:(num->B#C)->(num)list->(B#C)list`;;
-find_most_specific_entry db `MAP:(num->B#real)->(num)list->(B#real)list`;;
+
+let rule = find_exact_entry db `MAP:(num->A)->(num)list->(A)list`;;
+assert_eq (fun r -> r.const) rule `MAP:(num->B)->(num)list->(B)list`;;
+
+let rule = find_most_specific_entry db `MAP:(num->A)->(num)list->(A)list`;;
+assert_eq (fun r -> r.const) rule `MAP:(num->B)->(num)list->(B)list`;;
+
+let rule = find_exact_entry db `MAP:(A->num)->(A)list->(num)list`;;
+assert_eq (fun r -> r.const) rule `MAP:(A->num)->(A)list->(num)list`;;
+
+let rule = find_most_specific_entry db `MAP:(num->C#B)->(num)list->(C#B)list`;;
+assert_eq (fun r -> r.const) rule `MAP:(num->B#C)->(num)list->(B#C)list`;;
+
+let rule = find_most_specific_entry db `MAP:(num->C#real)->(num)list->(C#real)list`;;
+assert_eq (fun r -> r.const) rule `MAP:(num->B#C)->(num)list->(B#C)list`;;
 
 let t0 = `:(A->B)->(A)list->(B)list` and
     t1 = `:(num->B)->(num)list->(B)list` and
@@ -464,6 +494,6 @@ let t0 = `:(A->B)->(A)list->(B)list` and
 
 type_match t0 t3 [];;
 type_match t1 t3 [];;
-type_match t2 t3 [];; *)
+type_match t2 t3 [];;
 
-
+formatted_results();;
