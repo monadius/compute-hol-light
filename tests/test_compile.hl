@@ -1,7 +1,27 @@
 needs "tests/common.hl";;
 needs "eval_compile.hl";;
+needs "eval_default_db.hl";;
 
 reset_test_results();;
+
+(* Default db *)
+
+let def = new_definition `def d = let x = d * d + FACT d in d MOD (d DIV 7)`;;
+let def2 = new_definition `def2 d = (d > 3 ==> d * 3 = 3 * d)`;;
+
+let db = add_thms (default_db "def") [
+  "def", def, [];
+  "def2", def2, [];
+];;
+
+let tm = `def (if def2 4 \/ (3, NONE) = (3, SOME 1) then 400 - 12 else SUC (PRE 100))`;;
+let consts = dependencies db tm;;
+assert_eq length consts 5;;
+
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+loadt "tests/out.hl";;
+
+assert_eq concl result (mk_eq (tm, `3`));;
 
 (* Test db 0 *)
 
@@ -371,9 +391,6 @@ let f1 = new_definition `f1 f x = f x + x`;;
 let f2 = new_definition `f2 x f y = f x + f y`;;
 
 let rules = [
-  "ARITH_SUC", ARITH_SUC, [];
-  "ARITH_ADD", ARITH_ADD, [];
-  "ARITH_MULT", ARITH_MULT, [];
   "lambda1", lambda1, [];
   "lambda2", lambda2, [];
   "lambda3", lambda3, [];
@@ -395,10 +412,9 @@ let rules = [
 
 (* No abs elim and no type insts *)
 
-let db = add_thms (empty_db "test") rules;;
+let db = add_thms (default_db "test") rules;;
 
 write_rules_names db "tests/out.hl" [
-  "SUC"; "+"; "*";
   "lambda1"; "lambda2"; "lambda3"; "lambda4"; "lambda5";
   "lambda6"; "lambda7"; "lambda8"; "lambda9"; "lambda10";
   "lambda11"; "lambda12"; "lambda13"; "lambda14"; "lambda15";
@@ -413,17 +429,57 @@ assert_rhs (f_lambda1 `2` `5`) None `7`;;
 assert_rhs (f_lambda2 `3` `7`) None `18`;;
 assert_rhs (f_lambda3 `3` `7`) None `28`;;
 assert_rhs (f_lambda4 `&3`) None `&3`;;
-assert_rhs (f_lambda5 (`SUC`, f_SUC) `3, &8`) None `4`;;
+assert_rhs (f_lambda5 (`SUC`, conv_SUC) `3, &8`) None `4`;;
 assert_rhs (f_lambda6 `2`) None `5`;;
 assert_rhs (f_lambda7 `&3`) None `&3`;;
 assert_rhs (f_lambda8 `7`) None `8`;;
-assert_rhs (f_lambda9 (`SUC`, f_SUC)) None `7`;;
+assert_rhs (f_lambda9 (`SUC`, conv_SUC)) None `7`;;
 assert_rhs (f_lambda10 `&3`) None `3, &3`;;
 assert_rhs (f_lambda11 `2` (`lambda1`, f_lambda1)) None `5`;;
 assert_rhs (f_lambda12 `2` (`lambda1`, f_lambda1)) None `7`;;
-assert_rhs (f_lambda13 (`f1`, f_f1) (`SUC`, f_SUC) `7`) None `23`;;
-assert_rhs (f_lambda14 (`f2:num->(num->num)->num->num`, f_f2) (`SUC`, f_SUC) `7`) None `25`;;
+assert_rhs (f_lambda13 (`f1`, f_f1) (`SUC`, conv_SUC) `7`) None `23`;;
+assert_rhs (f_lambda14 (`f2:num->(num->num)->num->num`, f_f2) (`SUC`, conv_SUC) `7`) None `25`;;
 assert_rhs (f_lambda15 (`f2:num->(num->num)->num->num`, f_f2) (`lambda1`, f_lambda1) `7`) None `45`;; 
+
+let f_lambda1, f_lambda2, f_lambda3, f_lambda4, f_lambda5,
+  f_lambda6, f_lambda7, f_lambda8, f_lambda9, f_lambda10,
+  f_lambda11, f_lambda12, f_lambda13, f_lambda14, f_lambda15 =
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0;;
+
+(* Abs elim and type insts *)
+
+let db = add_thms (default_db "test" ~eliminate_abs:true) rules;;
+
+let tm = `lambda1 1 2 + lambda2 3 4 + lambda3 5 6 + lambda4 7 +
+          lambda5 SUC (8, &1) + lambda6 9 + lambda7 10 + lambda8 11 +
+          lambda9 lambda4 + (\(x, _). x) (lambda10 (&3)) +
+          lambda11 12 lambda1 + lambda12 13 lambda1 +
+          lambda13 f1 SUC 14 + lambda14 f2 SUC 15 +
+          lambda15 f2 lambda1 16`;;
+
+let consts = dependencies db tm;;
+assert_eq length consts 34;;
+write_rules_consts db "tests/out.hl" consts ~term:tm;;
+
+loadt "tests/out.hl";;
+assert_eq concl result (mk_eq (tm, `345`));;
+
+assert_rhs (f_lambda1 `2` `5`) None `7`;;
+assert_rhs (f_lambda2 `3` `7`) None `18`;;
+assert_rhs (f_lambda3 `3` `7`) None `28`;;
+assert_rhs (f_lambda4_num `3`) None `3`;;
+assert_rhs (f_lambda5_num_real_num (`SUC`, conv_SUC) `3, &8`) None `4`;;
+assert_rhs (f_lambda6 `2`) None `5`;;
+assert_rhs (f_lambda7_num `3`) None `3`;;
+assert_rhs (f_lambda8 `7`) None `8`;;
+assert_rhs (f_lambda9 (`SUC`, conv_SUC)) None `7`;;
+assert_rhs (f_lambda10_real `&3`) None `3, &3`;;
+assert_rhs (f_lambda11_num_num `2` (`lambda1`, f_lambda1)) None `5`;;
+assert_rhs (f_lambda12_num `2` (`lambda1`, f_lambda1)) None `7`;;
+assert_rhs (f_lambda13_num (`f1`, f_f1) (`SUC`, conv_SUC) `7`) None `23`;;
+assert_rhs (f_lambda14 (`f2:num->(num->num)->num->num`, f_f2_num) (`SUC`, conv_SUC) `7`) None `25`;;
+assert_rhs (f_lambda15 (`f2:num->(num->num)->num->num`, f_f2_num) (`lambda1`, f_lambda1) `7`) None `45`;; 
+
 
 (* Test db 3 *)
 
