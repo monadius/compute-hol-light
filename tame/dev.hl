@@ -232,16 +232,16 @@ let () =
   reset_all_counters();
   clear_arg_lists();
   clear_all_memos();;
-test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `100`)) None;;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100`);;
 
 (* 397s with Weak_memo *)
 (* 255s with Hashtbl_memo *)
 (* 262s with Assoc_memo *)
 (* 263s with Assoc_lru 10000, 2 *)
 (* 230s with tail_rec (Assoc_memo) *)
-test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `10000`);;
 test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `10000`)) None;;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `10000`);;
 
 (* 518s with Hashtbl_memo *)
 (* 517s without memo for removeKeyList *)
@@ -252,13 +252,13 @@ test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `10000`)) None;;
 (* 451s with tail rec main loop, Assoc (another run) *)
 (* 468s with tail_rec, Assoc *)
 (* 460s new tame support *)
-test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `20000`);;
 test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `20000`)) None;;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `20000`);;
 
 (* 100000: 2908s (non-exclusive) *)
 (* all: 11493s *)
-test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100000`);;
 test 1 (f_tameEnumFilterBounded (numeral `0`) (numeral `100000`)) None;;
+test 1 (f_tameEnumFilterBounded (numeral `0`)) (numeral `100000`);;
 
 let res, tm = it;;
 
