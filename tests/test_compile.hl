@@ -487,12 +487,12 @@ let my_map = new_definition `my_map l = MAP SUC l`;;
 let my_map2 = new_definition `my_map2 l = MAP ((+) 2) l`;;
 let my_map3 = new_definition `my_map3 n l = MAP ((+) (SUC n)) l`;;
 let my_map4 = new_definition `my_map4 n l = MAP (CONS (SUC n)) l`;;
+let my_map5 = new_definition `my_map5 f x y = MAP (f (SUC x)) [SUC y; 2]`;;
 
 let db = add_thms (empty_db "test") [
   "ARITH_SUC", ARITH_SUC, [];
   "ARITH_PRE", ARITH_PRE, [];
   "ARITH_ADD", ARITH_ADD, [];
-  "ARITH_MULT", ARITH_MULT, [];
   "ARITH_EQ", ARITH_EQ, [];
   "ARITH_GE", ARITH_GE, [];
   "ARITH_GT", ARITH_GT, [];
@@ -501,11 +501,12 @@ let db = add_thms (empty_db "test") [
   "my_map2", my_map2, [];
   "my_map3", my_map3, [];
   "my_map4", my_map4, [];
+  "my_map5", my_map5, [];
 ];;
 
 write_rules_names db "tests/out.hl" [
   "SUC"; "+"; "MAP";
-  "my_map"; "my_map2"; "my_map3"; "my_map4";
+  "my_map"; "my_map2"; "my_map3"; "my_map4"; "my_map5";
 ];;
 
 loadt "tests/out.hl";;
@@ -514,6 +515,31 @@ assert_rhs (f_my_map `[0;5;3]`) None `[1;6;4]`;;
 assert_rhs (f_my_map2 `[0;5;3]`) None `[2;7;5]`;;
 assert_rhs (f_my_map3 `5` `[0;5;3]`) None `[6;11;9]`;;
 assert_rhs (f_my_map4 `5` `[[]; [1]; [1;2]; []]`) None `[[6]; [6;1]; [6;1;2]; [6]]`;;
+assert_rhs (f_my_map5 (`+`, f_ADD) `10` `6`) None `[18; 13]`;;
+
+
+(* Tail call elimination test *)
+
+let loop = define
+  `loop n = if n = 1000000 then 1 else loop (SUC n)`;;
+
+let db = add_thms (empty_db "rec") [
+  "ARITH_EQ", ARITH_EQ, [];
+  "ARITH_SUC", ARITH_SUC, [];
+  "loop", loop, [];
+];;
+set_extra_for_names db (Extra_counter 1000) ["loop"];;
+
+let tm = `loop 0`;;
+let consts = dependencies db tm;;
+assert_eq length consts 3;;
+
+write_rules_consts db "tests/out.hl" consts;;
+loadt "tests/out.hl";;
+
+reset_all_counters();;
+assert_rhs (f_loop `0`) None `1`;;
+
 
 (* Other tests *)
 
