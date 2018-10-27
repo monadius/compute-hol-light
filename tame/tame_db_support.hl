@@ -72,14 +72,3 @@ let tame_default_db ~eliminate_abs () =
   add_extra_rule db ("Nat_arith.REPLACE_NUMERALS", Nat_arith.REPLACE_NUMERALS);
   List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
   db;;
-
-#load "unix.cma";;
-
-let test n f a =
-  let start = Unix.gettimeofday() in
-  let r = f a in
-  for i = 2 to n do
-    ignore (f a)
-  done;
-  let finish = Unix.gettimeofday() in
-  r, finish -. start;;
