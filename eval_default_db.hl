@@ -1,66 +1,66 @@
 needs "eval_compile.hl";;
 
-let f_EQ_num =
+let conv_EQ_num =
   let const = `(=):num->num->bool` in
   fun a b opt -> trans_opt opt (NUM_EQ_CONV (list_mk_comb (const, [a; b])));;
 
-let f_SUC =
+let conv_SUC =
   let const = `SUC` in
   fun a opt -> trans_opt opt (NUM_SUC_CONV (mk_comb (const, a)));;
 
-let f_PRE =
+let conv_PRE =
   let const = `PRE` in
   fun a opt -> trans_opt opt (NUM_PRE_CONV (mk_comb (const, a)));;
 
-let f_ADD =
+let conv_ADD =
   let const = `+` in
   fun a b opt -> trans_opt opt (NUM_ADD_CONV (list_mk_comb (const, [a; b])));;
 
-let f_SUB =
+let conv_SUB =
   let const = `-` in
   fun a b opt -> trans_opt opt (NUM_SUB_CONV (list_mk_comb (const, [a; b])));;
 
-let f_MUL =
+let conv_MUL =
   let const = `*` in
   fun a b opt -> trans_opt opt (NUM_MULT_CONV (list_mk_comb (const, [a; b])));;
 
-let f_EXP =
+let conv_EXP =
   let const = `EXP` in
   fun a b opt -> trans_opt opt (NUM_EXP_CONV (list_mk_comb (const, [a; b])));;
 
-let f_DIV =
+let conv_DIV =
   let const = `DIV` in
   fun a b opt -> trans_opt opt (NUM_DIV_CONV (list_mk_comb (const, [a; b])));;
 
-let f_MOD =
+let conv_MOD =
   let const = `MOD` in
   fun a b opt -> trans_opt opt (NUM_MOD_CONV (list_mk_comb (const, [a; b])));;
 
-let f_FACT =
+let conv_FACT =
   let const = `FACT` in
   fun a opt -> trans_opt opt (NUM_FACT_CONV (mk_comb (const, a)));;
 
-let f_LE =
+let conv_LE =
   let const = `<=` in
   fun a b opt -> trans_opt opt (NUM_LE_CONV (list_mk_comb (const, [a; b])));;
 
-let f_LT =
+let conv_LT =
   let const = `<` in
   fun a b opt -> trans_opt opt (NUM_LT_CONV (list_mk_comb (const, [a; b])));;
 
-let f_GE =
+let conv_GE =
   let const = `>=` in
   fun a b opt -> trans_opt opt (NUM_GE_CONV (list_mk_comb (const, [a; b])));;
 
-let f_GT =
+let conv_GT =
   let const = `>` in
   fun a b opt -> trans_opt opt (NUM_GT_CONV (list_mk_comb (const, [a; b])));;
 
-let f_MIN =
+let conv_MIN =
   let const = `MIN` in
   fun a b opt -> trans_opt opt (NUM_MIN_CONV (list_mk_comb (const, [a; b])));;
 
-let f_MAX =
+let conv_MAX =
   let const = `MAX` in
   fun a b opt -> trans_opt opt (NUM_MAX_CONV (list_mk_comb (const, [a; b])));;
 
@@ -96,18 +96,23 @@ let EQ_LIST = prove
     (CONS x xs = CONS y ys <=> x = y /\ xs = ys)`,
   REWRITE_TAC[injectivity "list"; distinctness "list"]);;
 
-let default_db name =
-  let db = empty_db name in
+let default_db ?eliminate_abs name =
+  let db = empty_db name ?eliminate_abs in
   List.iter (fun rw -> add_extra_rewrite db rw) [
     "LET_DEF", LET_DEF;
     "LET_END_DEF", LET_END_DEF;
     "LOGIC_SIMP", LOGIC_SIMP;
   ];
-  List.iter (fun c -> set_rule db c) [
-    `(=):num->num->bool`;
-    `SUC`; `PRE`; `+`; `-`; `*`; `EXP`; `DIV`; `MOD`; `FACT`;
-    `<=`; `<`; `>=`; `>`; 
-    `MIN`; `MAX`;
+  List.iter (fun (c, name) -> set_rule db c ~name) [
+    `(=):num->num->bool`, "conv_EQ_num";
+    `SUC`, "conv_SUC"; `PRE`, "conv_PRE"; 
+    `+`, "conv_ADD"; `-`, "conv_SUB"; 
+    `*`, "conv_MUL"; `EXP`, "conv_EXP"; 
+    `DIV`, "conv_DIV"; `MOD`, "conv_MOD"; 
+    `FACT`, "conv_FACT";
+    `<=`, "conv_LE"; `<`, "conv_LT"; 
+    `>=`, "conv_GE"; `>`, "conv_GT"; 
+    `MIN`, "conv_MIN"; `MAX`, "conv_MAX";
   ];
   add_thms db [
     "NOT_CLAUSES'", NOT_CLAUSES', [];
