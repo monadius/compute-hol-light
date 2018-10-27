@@ -1,0 +1,211 @@
+needs "tame/tame_db.hl";;
+needs "tests/common.hl";;
+
+let db, consts = tame_db tame_rules;;
+write_rules_consts db "tame/out.hl" consts;;
+loadt "tame/out.hl";;
+
+let num = Nat_arith.replace_numerals;;
+
+let graph_tm = num `Graph [] 0 [[Face [1;2] Final]; [Face [3] Nonfinal]] [1;2]`;;
+let graph_tm2 = num `Graph [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal] 4
+  [[Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+    [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+    [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+    [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal]]
+  [0; 0; 0; 0]`;;
+let graph_tm3 = num `Graph [Face [0; 1; 2] Final; Face [2; 1; 0] Nonfinal] 3
+  [[Face [0; 1; 2] Final; Face [2; 1; 0] Nonfinal];
+    [Face [0; 1; 2] Final; Face [2; 1; 0] Nonfinal];
+    [Face [0; 1; 2] Final; Face [2; 1; 0] Nonfinal]]
+  [0; 0; 0]`;;
+
+reset_test_results();;
+
+assert_rhs (f_between_num (num `[1;2;3]`) (num `1`) (num `3`)) None (num `[2]`);;
+assert_rhs (f_tri graph_tm (num `1`)) None (num `0`);;
+assert_rhs (f_tri graph_tm3 (num `0`)) None (num `1`);;
+assert_rhs (f_facesAt graph_tm (num `1`)) None (num `[Face [3] Nonfinal]`);;
+assert_rhs (f_degree graph_tm2 (num `1`)) None (num `2`);;
+assert_rhs (f_except graph_tm2 (num `1`)) None (num `0`);;
+assert_rhs (f_finals graph_tm2) None (num `[Face [0;1;2;3] Final]`);;
+assert_rhs (f_heights graph_tm) None (num `[1;2]`);;
+assert_rhs (f_height graph_tm (num `1`)) None (num `2`);;
+assert_rhs (f_nextElem_num (num `[1;2;3]`) (num `0`) (num `2`)) None (num `3`);;
+assert_rhs (f_setFinal (num `Face [1;2] Nonfinal`)) None (num `Face [1;2] Final`);;
+assert_rhs (f_nextVertex (num `Face [1;2;3;4] Final`) (num `4`)) None (num `1`);;
+assert_rhs (f_neighbors graph_tm2 (num `2`)) None (num `[3;1]`);;
+assert_rhs (f_nonFinals graph_tm2) None (num `[Face [3;2;1;0] Nonfinal]`);;
+assert_rhs (f_vertextype graph_tm2 (num `1`)) None (num `0,1,0`);;
+assert_rhs (f_finalVertex graph_tm2 (num `0`)) None `F`;;
+assert_rhs (f_final_graph graph_tm2) None `F`;;
+assert_rhs (f_final_graph graph_tm) None `T`;;
+assert_rhs (f_nextVertices (num `Face [1;2;3;4] Nonfinal`) (num `3`) (num `2`)) None (num `1`);;
+assert_rhs (f_countVertices graph_tm2) None (num `4`);;
+assert_rhs (f_directedLength (num `Face [1;2;3;4] Nonfinal`) (num `1`) (num `2`)) None (num `1`);;
+assert_rhs (f_vertices_graph graph_tm2) None (num `[0;1;2;3]`);;
+assert_rhs (f_tame10 graph_tm) None `F`;;
+assert_rhs (f_tame11a graph_tm2) None `F`;;
+assert_rhs (f_tame11b graph_tm2) None `T`;;
+assert_rhs (f_tame12o graph_tm2) None `T`;;
+assert_rhs (f_tame10ub graph_tm2) None `T`;;
+assert_rhs (f_squanderFace (num `1`)) None (num `15410`);;
+assert_rhs (f_squanderVertex (num `1`) (num `20`)) None (num `15410`);;
+assert_rhs (f_maxGon (num `3`)) None (num `6`);;
+assert_rhs (f_seed (num `0`)) None graph_tm3;;
+assert_rhs (f_duplicateEdge graph_tm2 (num `Face [1;2] Nonfinal`) (num `1`) (num `2`)) None `F`;;
+assert_rhs (f_containsUnacceptableEdgeSnd (`<`, f_LT) (num `1`) (num `[1;2;3;4;5]`)) None `T`;;
+assert_rhs (f_containsUnacceptableEdge (`<=`, f_LE) (num `[1;2;3;4]`)) None `T`;;
+assert_rhs (f_containsDuplicateEdge graph_tm2 (num `Face [1;2] Nonfinal`) (num `1`) (num `[1;2;3]`)) None `F`;;
+
+let empty_trie_tm = `Tries [] []:(num,((num)list)list)tries`;;
+let trie_tm = num `Tries [] [1, Tries [] [3,Tries [[[1; 3]]] []; 2,Tries [[[1; 2]; [3; 4]]] []]]`;;
+
+assert_rhs (f_alist_num_num_list_list trie_tm) None (rand trie_tm);;
+assert_rhs (f_values_num_num_list_list trie_tm) None (`[]:(((num)list)list)list`);;
+assert_rhs (f_lookup_num_num_list_list trie_tm (num `[1;2]`)) None (num `[[[1;2]; [3;4]]]`);;
+assert_rhs (f_update_num_num_list_list trie_tm (num `[]:(num)list`) (num `[[[2;5]]]`)) None 
+  (num `Tries [[[2; 5]]] [1, Tries [] [3,Tries [[[1; 3]]] []; 2,Tries [[[1; 2]; [3; 4]]] []]]`);;
+
+assert_rhs (f_minimalFace (num `[Face [1;2] Final; Face [2;3;4] Nonfinal; Face [1] Final]`)) None (num `Face [1] Final`);;
+assert_rhs (f_minimalVertex graph_tm2 (num `Face [1;2;3] Final`)) None (num `1`);;
+assert_rhs (f_heightsNewVertices (num `1`) (num `4`) (num `4`)) None (num `[2;3;4;5]`);;
+assert_rhs (f_split_face (num `Face [1;2;3;4] Final`) (num `2`) (num `4`) (num `[5;6]`)) None
+  (num `Face [6; 5; 2; 3; 4] Nonfinal,Face [4; 1; 2; 5; 6] Nonfinal`);;
+assert_rhs (f_splitFace graph_tm2 (num `1`) (num `2`) (num `Face [1;2;3] Nonfinal`) (num `[1;2]`)) None
+  (num `Face [2; 1; 1; 2] Nonfinal,
+  Face [2; 3; 1; 1; 2] Nonfinal,
+  Graph
+  [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal;
+   Face [2; 1; 1; 2] Nonfinal]
+  6
+  [[Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 0] Nonfinal];
+   [Face [2; 1; 1; 2] Nonfinal; Face [2; 3; 1; 1; 2] Nonfinal];
+   [Face [2; 1; 1; 2] Nonfinal; Face [2; 3; 1; 1; 2] Nonfinal]]
+  [0; 0; 0; 0; 1; 1]`);;
+assert_rhs (f_makeFaceFinalFaceList (num `Face [1;2;3] Final`) (num `[Face [1;2;3] Nonfinal]`)) None
+  (num `[Face [1;2;3] Nonfinal]`);;
+assert_rhs (f_makeFaceFinal (num `Face [3] Nonfinal`) graph_tm) None
+  (num `Graph [] 0 [[Face [1; 2] Final]; [Face [3] Final]] [1; 2]`);;
+assert_rhs (f_subdivFace graph_tm2 (num `Face [3;2;1;0] Nonfinal`) (num `[SOME 1; NONE; SOME 3]`)) None
+  (num `Graph
+  [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 4] Final;
+   Face [4; 1; 0; 3] Nonfinal]
+  5
+  [[Face [0; 1; 2; 3] Final; Face [4; 1; 0; 3] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 4] Final;
+    Face [4; 1; 0; 3] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1; 4] Final];
+   [Face [0; 1; 2; 3] Final; Face [4; 1; 0; 3] Nonfinal;
+    Face [3; 2; 1; 4] Final];
+   [Face [4; 1; 0; 3] Nonfinal; Face [3; 2; 1; 4] Final]]
+  [0; 0; 0; 0; 1]`);;
+
+assert_rhs (f_enumAppend (num `5`) (num `[[1; 2; 3; 2]; [0]]`)) None
+  (num `[[1; 2; 3; 2; 2]; [1; 2; 3; 2; 3]; [1; 2; 3; 2; 4];
+  [1; 2; 3; 2; 5]; [0; 0]; [0; 1]; [0; 2]; [0; 3]; [0; 4];
+  [0; 5]]`);;
+assert_rhs (f_enumerator (num `4`) (num `5`)) None
+  (num `[[0; 0; 0; 4]; [0; 0; 1; 4]; [0; 0; 2; 4]; [0; 0; 3; 4];
+  [0; 1; 1; 4]; [0; 1; 2; 4]; [0; 1; 3; 4]; [0; 2; 2; 4];
+  [0; 2; 3; 4]; [0; 3; 3; 4]]`);;
+assert_rhs (f_enum (num `3`) (num `4`)) None (num `[[0; 0; 3]; [0; 1; 3]; [0; 2; 3]]`);;
+
+assert_rhs (f_hideDups_num (num `[1;2;3;3;3;4;3]`)) None
+  (num `[SOME 1; SOME 2; SOME 3; NONE; NONE; SOME 4; SOME 3]`);;
+assert_rhs (f_indexToVertexList (num `Face [1;2;3] Nonfinal`) (num `2`) (num `[1;2;0;0]`)) None
+  (num `[SOME 3; SOME 1; SOME 2; NONE]`);;
+assert_rhs (f_notame graph_tm2) None `F`;;
+assert_rhs (f_excessAtType (num `2`) (num `4`) (num `0`)) None (num `7178`);;
+assert_rhs (f_excessAt graph_tm2 (num `3`)) None (num `0`);;
+assert_rhs (f_faceSquanderLowerBound graph_tm2) None (num `2058`);;
+assert_rhs (f_deleteAround_num graph_tm2 (num `1`) (num `[1,2; 0,3]`)) None (num `[1,2]`);;
+
+assert_rhs (f_excessNotAtRec (num `[1,2; 3,4]`) graph_tm2) None (num `4`);;
+assert_rhs (f_excessTable graph_tm (num `[0;1]`)) None (num `[0, 15410]`);;
+assert_rhs (f_excessNotAt graph_tm (num `SOME 0`)) None (num `0`);;
+assert_rhs (f_squanderLowerBound graph_tm2) None (num `2058`);;
+assert_rhs (f_polysizes (num `1`) graph_tm2) None (num `[3; 4]`);;
+assert_rhs (f_is_tame13a graph_tm2) None `T`;;
+assert_rhs (f_generatePolygonTame (num `1`) (num `0`) (num `Face [1;2] Final`) graph_tm) None
+  (num `[Graph [Face [0; 0; 1] Nonfinal] 1
+  [[Face [1; 2; 0; 0] Final; Face [0; 0; 1] Nonfinal];
+   [Face [3] Nonfinal];
+   [Face [0; 0; 1] Nonfinal; Face [1; 2; 0; 0] Final]]
+  [1; 2; 2]]`);;
+assert_rhs (f_next_tame0 (num `0`) graph_tm3) None
+  (num `[Graph
+  [Face [0; 1; 2] Final; Face [0; 2; 3] Final;
+   Face [3; 2; 1; 0] Nonfinal]
+  4
+  [[Face [0; 1; 2] Final; Face [3; 2; 1; 0] Nonfinal;
+    Face [0; 2; 3] Final];
+   [Face [0; 1; 2] Final; Face [3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2] Final; Face [0; 2; 3] Final;
+    Face [3; 2; 1; 0] Nonfinal];
+   [Face [3; 2; 1; 0] Nonfinal; Face [0; 2; 3] Final]]
+  [0; 0; 0; 1];
+  Graph [Face [0; 1; 2] Final; Face [2; 1; 0] Final] 3
+  [[Face [0; 1; 2] Final; Face [2; 1; 0] Final];
+   [Face [0; 1; 2] Final; Face [2; 1; 0] Final];
+   [Face [0; 1; 2] Final; Face [2; 1; 0] Final]]
+  [0; 0; 0]]`);;
+assert_rhs (f_is_tame graph_tm2) None `F`;;
+assert_rhs (f_next_tame (num `0`) graph_tm2) None
+  (num `[Graph
+  [Face [0; 1; 2; 3] Final; Face [0; 3; 4] Final;
+   Face [4; 3; 2; 1; 0] Nonfinal]
+  5
+  [[Face [0; 1; 2; 3] Final; Face [4; 3; 2; 1; 0] Nonfinal;
+    Face [0; 3; 4] Final];
+   [Face [0; 1; 2; 3] Final; Face [4; 3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [4; 3; 2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [0; 3; 4] Final;
+    Face [4; 3; 2; 1; 0] Nonfinal];
+   [Face [4; 3; 2; 1; 0] Nonfinal; Face [0; 3; 4] Final]]
+  [0; 0; 0; 0; 1];
+  Graph
+  [Face [0; 1; 2; 3] Final; Face [0; 3; 2] Final;
+   Face [2; 1; 0] Nonfinal]
+  4
+  [[Face [0; 1; 2; 3] Final; Face [2; 1; 0] Nonfinal;
+    Face [0; 3; 2] Final];
+   [Face [0; 1; 2; 3] Final; Face [2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [0; 3; 2] Final;
+    Face [2; 1; 0] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [0; 3; 2] Final]]
+  [0; 0; 0; 0];
+  Graph
+  [Face [0; 1; 2; 3] Final; Face [1; 0; 3] Final;
+   Face [3; 2; 1] Nonfinal]
+  4
+  [[Face [0; 1; 2; 3] Final; Face [1; 0; 3] Final];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1] Nonfinal;
+    Face [1; 0; 3] Final];
+   [Face [0; 1; 2; 3] Final; Face [3; 2; 1] Nonfinal];
+   [Face [0; 1; 2; 3] Final; Face [1; 0; 3] Final;
+    Face [3; 2; 1] Nonfinal]]
+  [0; 0; 0; 0]]`);;
+
+assert_rhs (f_nof_vertices_num (num `[[1;2]; [3]; [0;1]]`)) None (num `4`);;
+
+assert_rhs (f_qsort_num (`<`, f_LT) (num `[1;0;3;2;4;1]`)) None (num `[0;1;1;2;3;4]`);;
+assert_rhs (f_hash (num `[[1;2;3]; [1]; [2;3;4]]`)) None (num `[4;3;6;6;4;0]`);;
+assert_rhs (f_fgraph graph_tm2) None (num `[[0;1;2;3]; [3;2;1;0]]`);;
+assert_rhs (f_merge_num_num (num `[1,2; 5,1]`) (num `[3,4; 1,3]`)) None (num `[5,1; 3,4; 1,3]`);;
+assert_rhs (f_compat_num_num (num `[1,2; 5,1]`) (num `[5,4; 1,3]`)) None `F`;;
+
+assert_rhs (f_pr_iso_test_num_num (num `[[1;2];[3]]`) (num `[[2;1];[2]]`)) None `F`;;
+assert_rhs (f_iso_test_num_num (num `[[1;2];[2]]`) (num `[[2;1];[2]]`)) None `T`;;
+
+assert_rhs (f_insert_mod_trie (num `[[1]]`) trie_tm) None
+  (num `Tries []
+  [1,
+   Tries []
+   [1,Tries [] [0,Tries [[[1]]] []]; 3,Tries [[[1; 3]]] [];
+    2,Tries [[[1; 2]; [3; 4]]] []]]`);;
+
+formatted_results();;
