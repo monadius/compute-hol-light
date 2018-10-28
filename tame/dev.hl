@@ -2,7 +2,7 @@
 (* load_path := "/Users/monad/Work/git/formal_ineqs" :: !load_path;; *)
 needs "tame/tame_defs.hl";;
 needs "tame/tame_defs_unrolled.hl";;
-loadt "tame/tame_db_support.hl";;
+loadt "tame/tame_db.hl";;
 
 let rules = [
   "APPEND_UNROLL8", APPEND_UNROLL8, [];

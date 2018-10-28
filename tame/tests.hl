@@ -1,1 +1,2 @@
 loadt "tame/test_tame_unit.hl";;
+loadt "tame/test_tame_performance.hl";;
