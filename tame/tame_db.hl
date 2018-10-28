@@ -1,6 +1,25 @@
 needs "tame/tame_defs.hl";;
 needs "tame/tame_defs_unrolled.hl";;
-needs "tame/tame_db_support.hl";;
+needs "tame/tame_support.hl";;
+needs "eval_compile.hl";;
+
+let tame_default_db ~eliminate_abs () =
+  let db = empty_db ~eliminate_abs "tame" in
+  List.iter (fun c -> set_rule db c) [
+    `(=):num->num->bool`;
+    (* `(=):A->A->bool`; *)
+    `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
+  ];
+  ignore @@ add_thms db [
+    "NOT_CLAUSES'", NOT_CLAUSES', [];
+    "EQ_BOOL", EQ_BOOL, [];
+    "EQ_PAIR", EQ_PAIR, [];
+    "EQ_LIST", EQ_LIST, [];
+    "EQ_FACE", EQ_FACE, [];
+  ];
+  add_extra_rule db ("Nat_arith.REPLACE_NUMERALS", Nat_arith.REPLACE_NUMERALS);
+  List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
+  db;;
 
 let tame_rules = [
   "APPEND_UNROLL8", APPEND_UNROLL8, [];

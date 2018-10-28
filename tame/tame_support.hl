@@ -1,3 +1,6 @@
+needs "tame/tame_defs.hl";;
+needs "tame/tame_defs_unrolled.hl";;
+
 needs "arith_options.hl";;
 Arith_options.base := 100;;
 Arith_options.cached := false;;
@@ -20,8 +23,6 @@ let f_EQ_num tm1 tm2 opt = trans_opt opt (fst (Nat_arith.neq tm1 tm2));;
 let numeral = Nat_arith.replace_numerals;;
 install_user_printer ("nat", Nat_arith.print_nat);;
 (* install_parser ("nat", Nat_arith.parse_nat);; *)
-
-loadt "eval_compile.hl";;
 
 let standardize = Misc_vars.standardize;;
 let standardize_tm = Misc_vars.standardize_tm;;
@@ -54,32 +55,3 @@ let EQ_FACE = prove
     (Face xs Final = Face ys Nonfinal <=> F) /\
     (Face xs Nonfinal = Face ys Final <=> F)`,
   REWRITE_TAC[injectivity "face"; distinctness "facetype"]);;
-
-let tame_default_db ~eliminate_abs () =
-  let db = empty_db ~eliminate_abs "tame" in
-  List.iter (fun c -> set_rule db c) [
-    `(=):num->num->bool`;
-    (* `(=):A->A->bool`; *)
-    `+`; `-`; `SUC`; `*`; `PRE`; `<=`; `<`; `>=`; `>`; `MIN`; `MAX`;
-  ];
-  ignore @@ add_thms db [
-    "NOT_CLAUSES'", NOT_CLAUSES', [];
-    "EQ_BOOL", EQ_BOOL, [];
-    "EQ_PAIR", EQ_PAIR, [];
-    "EQ_LIST", EQ_LIST, [];
-    "EQ_FACE", EQ_FACE, [];
-  ];
-  add_extra_rule db ("Nat_arith.REPLACE_NUMERALS", Nat_arith.REPLACE_NUMERALS);
-  List.iter (add_extra_rewrite db) ["GT", GT; "GE", GE];
-  db;;
-
-#load "unix.cma";;
-
-let test n f a =
-  let start = Unix.gettimeofday() in
-  let r = f a in
-  for i = 2 to n do
-    ignore (f a)
-  done;
-  let finish = Unix.gettimeofday() in
-  r, finish -. start;;

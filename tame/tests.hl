@@ -1,2 +1,9 @@
+(* Unit tests for definitions *)
+(* Should print: PASSED 76/76 tests *)
 loadt "tame/test_tame_unit.hl";;
+
+(* Simple performance tests *)
+loadt "tame/test_tame.hl";;
+
+(* Performance tests *)
 loadt "tame/test_tame_performance.hl";;
