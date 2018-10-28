@@ -1,4 +1,5 @@
-(* Original definitions are written by J. Harrison based on F. Wiedijk code *)
+(* Original definitions are written by J. Harrison.                          *)
+(* Based on OCaml translation by F. Wiedijk.                                 *)
 
 (* ------------------------------------------------------------------------- *)
 (* Use :: as infix CONS to maintain the look and feel a bit better.          *)
