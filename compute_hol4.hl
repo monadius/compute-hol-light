@@ -1,3 +1,11 @@
+(* ========================================================================== *)
+(*      HOL Light translation of HOL4 computeLib                              *)
+(*                                                                            *)
+(*      Copyright (c) 2018 Alexey Solovyev                                    *)
+(*                                                                            *)
+(*      This file is distributed under the terms of the MIT licence           *)
+(* ========================================================================== *)
+
 module type Compute_sig = sig
   type compset
 

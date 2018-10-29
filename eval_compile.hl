@@ -1,3 +1,11 @@
+(* ========================================================================== *)
+(*      Compilation of HOL Light functions into executable OCaml code         *)
+(*                                                                            *)
+(*      Copyright (c) 2018 Alexey Solovyev                                    *)
+(*                                                                            *)
+(*      This file is distributed under the terms of the MIT licence           *)
+(* ========================================================================== *)
+
 needs "eval_compile_tree.hl";;
 
 let generate_eval_errors = ref false;;
