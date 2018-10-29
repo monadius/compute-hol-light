@@ -80,7 +80,7 @@ let rw = new_compset [MAP; FILTER; ARITH];;
 (* General conversion are CBV_CONV and WEAK_CBV_CONV *)
 CBV_CONV rw `3 + 4`;;
 
-(* WEAK_CBV_CONV does not evaluates under unreduced abstractions *)
+(* WEAK_CBV_CONV does not evaluate expressions inside unreduced abstractions *)
 CBV_CONV rw `(\x y. x + y) 3 4`;;
 WEAK_CBV_CONV rw `(\x y. x + y) 3 4`;;
 CBV_CONV rw `(\x y. 3 * x + y) 3`;;
@@ -161,7 +161,7 @@ add_funs [inf_loop; inf_loop_num];;
 (* Infinite evaluation (uncomment, run, and stop with Ctrl+C) *)
 (* EVAL_CONV `inf_loop 1` *)
 
-(* Evaluated without problems *)
+(* Evaluates without problems *)
 EVAL_CONV `if 3 * 3 = 9 then 1 + 1 = 3 else (inf_loop 1)`;;
 
 (* Infinite loop *)
@@ -197,7 +197,7 @@ EVAL_CONV `eager 1 (inf_loop_num 3)`;;
 let eager_lazy = strictify_thm lazy_def;;
 (* This does not override the existing definition because the theorems
 are sorted internally by the number of strict arguments: a theorem with
-the minimum number of strict argument is applied first *)
+the minimum number of strict arguments is applied first *)
 add_funs [eager_lazy];;
 EVAL_CONV `lazy 1 3`;;
 (* No infinite loop *)

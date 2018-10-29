@@ -7,7 +7,7 @@ needs "eval_compile.hl";;
 (*****************************************************************************)
 
 (* The compiler workflow is the following: 
-  1) a database with equality theorems;
+  1) a database with equality theorems is created;
   2) some or all rules from this database are compiled
      into OCaml code which can be saved in a file.
   Several optimizations are available. *)
@@ -26,7 +26,7 @@ add_thms db [
 
 (* The first argument of add_thms is a database. The second argument
 is a list of theorems. Each element of this list is a triple:
-OCaml name of a theorem, theorem itself, a list of constants for
+the OCaml name of a theorem, a theorem itself, a list of constants for
 manual instantiation of types (will be explained later). *)
 
 (* add_thms mutates the db but it also returns db. So it is convenient
@@ -56,14 +56,14 @@ f_ADD `23` `44` None;;
 (* Returns |- 23 * 33 = 759 *)
 f_MUL `23` `33` None;;
 
-(* Compiled rules are called with terms as arguments and they return equality
+(* Compiled rules are invoked with terms as arguments and they return equality
 theorems. The last argument of compiled rules is an optional theorem.
 This argument is important for implementing tail call elimination for
 tail recursive definitions. It is enough to call compiled rules with None to
 get final results. *)
 
-(* Compiled rules only accept terms which are in normalized forms recongnized 
-by underlying equality theorems *)
+(* Compiled rules only accept terms which are in normalized forms which are 
+recognized by underlying equality theorems *)
 
 (* Failure: No match *)
 f_SUC `1 + 2` None;;
@@ -167,9 +167,9 @@ loadt "examples/out_first.hl";;
 result;;
 factorial `30` None;;
 
-(* One can load a predefined database which contains arithmetic operations
+(* We can load a predefined database which contains arithmetic operations
 for natural numbers (implemented with standard conversions NUM_..._CONV) and
-comparison operations for natural numbers, pairs, lists, and optional types *)
+equality operations for natural numbers, pairs, lists, and optional types *)
 
 needs "eval_default_db.hl";;
 let db = default_db "default";;
@@ -227,13 +227,13 @@ write_rules_names db "examples/out_2.hl" ["SUC"; "MAP"] ~term:tm;;
 loadt "examples/out_2.hl";;
 result;;
 
-(* Note that the term `MAP SUC [1;SUC 2;3]` is evaluated with
+(* Note that the term tm = `MAP SUC [1;SUC 2;3]` is evaluated with
 f_MAP_num_num *)
 f_MAP (`MAP SUC`, f_MAP (`SUC`, f_SUC)) `[[1; 2]; [3; 4]; []]` None;;
 f_MAP (`SUC`, f_SUC) `[1]` None;;
 f_MAP_num_num (`SUC`, f_SUC) `[1]` None;;
 
-(* It may be very difficult to select appropriate type instantiation
+(* It may be very difficult to select appropriate type instantiations
 for all terms in a database. We again can use the function "dependencies"
 to compute all required type instantiations automatically. *)
 let tm = `MAP (MAP SUC) [[1; 2]; [3; 4]]`;;
@@ -541,8 +541,8 @@ loadt "examples/out_extra.hl";;
 (* We can associate extra parameters with each constant in a database.
 These parameters are used for adding extra features to the generated code. *)
 
-(* We can generate counters for a specific function. This counters can be used
-to track how many times a given function is invoked. *)
+(* We can generate call counters for specific functions. 
+These counters can be used to track how many times a given function is invoked. *)
 
 (* Extra_counter takes one integer argument: if this argument is greater than 0
 then the counter value is printed during the evaluation process when the counter
@@ -560,9 +560,9 @@ get_counter "f_SUC";;
 get_all_counters();;
 
 (* We can improve performance of some functions if we memoize their results.
-There are different memoization implementations available: with standard Hashtbl,
-with associative arrays which always have constant number of entries, and
-with LRU associative arrays which also have constant number of entries. *)
+Different memoization implementations are available: standard Hashtbl,
+associative arrays which always have a constant number of entries, and
+LRU associative arrays which also have a constant number of entries. *)
 
 let fib = define `fib n = if n < 2 then n else fib (n - 1) + fib (n - 2)`;;
 
@@ -681,3 +681,6 @@ should not reduce to functions. Functions cannot be passed inside lists, pairs
 or any other structures: `MAP (\f. f 3) [SUC; PRE]`. *)
 
 (* This limitations may be removed in later versions of the evaluation tool. *)
+
+(* "match" without elimination of abstractions is only supported when it is
+a top level operation. *)
