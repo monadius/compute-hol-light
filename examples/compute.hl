@@ -8,7 +8,7 @@ open Compute;;
 (* Basic usage                                                               *)
 (*****************************************************************************)
 
-(* Add rewrite rules (equality theorems or conjunctions of equality theorems) 
+(* Add rewrite rules (equational theorems or conjunctions of equational theorems) 
 to the default global set of rewrite rules (compset) *)
 add_funs [ARITH_ADD; ARITH_SUC];;
 
@@ -29,7 +29,7 @@ EVAL_RULE th;;
 prove(`3 * 3 + 2 * 2 = 13`, EVAL_TAC);;
 
 (* We can remove existing rules: all rules for constants in
-left hand sides of the given equality theorems are deleted *)
+left hand sides of the given equational theorems are deleted *)
 del_funs [ARITH_ADD];;
 (* Alternatively, we can delete constants directly *)
 del_consts [`+`];;
@@ -74,7 +74,7 @@ EVAL_CONV `if 3 * 3 > 9 then (1 + 1 = 3) /\ A else B \/ B`;;
 (* Custom compsets                                                           *)
 (*****************************************************************************)
 
-(* A new compset can be created from a list of equality theorems *)
+(* A new compset can be created from a list of equational theorems *)
 let rw = new_compset [MAP; FILTER; ARITH];;
 
 (* General conversion are CBV_CONV and WEAK_CBV_CONV *)
@@ -171,9 +171,9 @@ add_funs [ARITH_GT; ARITH_GE];;
 EVAL_CONV `if 3 * 3 > 9 then inf_loop 1 else 1 + 1 * 4 > 3`;;
 
 (* In general, EVAL_CONV eagerly evaluates all arguments.
-But if the given equality theorem is in the form |- lhs x = \y. rhs,
+But if the given equational theorem is in the form |- lhs x = \y. rhs,
 then `lhs a b` is evaluated as follows: `a` is evaluated first, the
-equality theorem is applied, and `b` is evaluated only if there are no
+equation is applied, and `b` is evaluated only if there are no
 other reductions *)
 
 let lazy_def = define `lazy x = \y. if x > 3 then y else 2 * x`;;

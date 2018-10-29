@@ -7,7 +7,7 @@ needs "eval_compile.hl";;
 (*****************************************************************************)
 
 (* The compiler workflow is the following: 
-  1) a database with equality theorems is created;
+  1) a database with equational theorems is created;
   2) some or all rules from this database are compiled
      into OCaml code which can be saved in a file.
   Several optimizations are available. *)
@@ -56,14 +56,14 @@ f_ADD `23` `44` None;;
 (* Returns |- 23 * 33 = 759 *)
 f_MUL `23` `33` None;;
 
-(* Compiled rules are invoked with terms as arguments and they return equality
+(* Compiled rules are invoked with terms as arguments and they return equational
 theorems. The last argument of compiled rules is an optional theorem.
 This argument is important for implementing tail call elimination for
 tail recursive definitions. It is enough to call compiled rules with None to
 get final results. *)
 
 (* Compiled rules only accept terms which are in normalized forms which are 
-recognized by underlying equality theorems *)
+recognized by underlying equational theorems *)
 
 (* Failure: No match *)
 f_SUC `1 + 2` None;;
