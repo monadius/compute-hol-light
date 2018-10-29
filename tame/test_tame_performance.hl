@@ -8,6 +8,7 @@ needs "tame/out.hl";;
 reset_test_results();;
 
 (* 11651 (3h 14m 11s) (182 times slower than OCaml) *)
+(* ocamlopt: 2535 (42m 15s), 4.6 times faster *)
 reset_all_counters();;
 clear_all_memos();;
 let r1, time1, _ = 
