@@ -7,12 +7,14 @@ needs "tame/out.hl";;
 
 reset_test_results();;
 
+(* 11651 (3h 14m 11s) (182 times slower than OCaml) *)
 reset_all_counters();;
 clear_all_memos();;
 let r1, time1, _ = 
   assert_noexception ~name:"p = 0: all" 
     (f_tameEnumFilterBounded (numeral `0`) (numeral `400000`)) None;;
 
+(* 23478 (6h 31m 18s) (154 times slower than OCaml) *)
 reset_all_counters();;
 clear_all_memos();;
 let r2, time2, _ = 
