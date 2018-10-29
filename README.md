@@ -7,6 +7,7 @@ A collection of tools for performing computations in HOL Light with equality the
 `eval_compile.hl` is a compiler which takes HOL Light equality theorems and produces OCaml functions which evaluate corresponding theorems for the given arguments. All evaluations are done with HOL Light primitive inference rules and all results are HOL Light theorems.
 
 See [examples/compile.hl](examples/compile.hl) for additional information and examples.
+[examples/example_out.hl](examples/example_out.hl) is an example of compiled definitions.
 
 ## HOL4 computeLib in HOL Light
 

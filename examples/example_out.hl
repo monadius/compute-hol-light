@@ -1,0 +1,151 @@
+let COND_T = (standardize o prove)(`(if T then (t:A) else e) = t`, REWRITE_TAC[]) and
+    COND_F = (standardize o prove)(`(if F then (t:A) else e) = e`, REWRITE_TAC[]);;
+
+let p_var_bool = standardize_tm `P: bool`;;
+let T_AND = (standardize o TAUT) `T /\ P <=> P` and
+    F_AND = (standardize o TAUT) `F /\ P <=> F` and
+    T_OR = (standardize o TAUT) `T \/ P <=> T` and
+    F_OR = (standardize o TAUT) `F \/ P <=> P`;;
+
+let local_split_thm th =
+  let extra_rw = PURE_REWRITE_RULE [] in
+  let extra_rules = rev_itlist (o) [] I in
+  split_thm th |> map extra_rw |> map extra_rules
+;;
+
+
+let f_SUC =
+  let ARITH_SUC_case1, ARITH_SUC_case2, ARITH_SUC_case3, ARITH_SUC_case4 =
+    match map standardize (local_split_thm ARITH_SUC) with
+    | [th1; th2; th3; th4] -> (th1, th2, th3, th4)
+    | _ -> failwith "error"
+     in
+  let var_n = standardize_tm (mk_var ("n", `:num`)) in
+  let rec f_SUC tm1 opt_th =
+    match tm1 with
+    | Comb (Const ("NUMERAL", _), n) ->
+      let base_th = trans_opt opt_th (INST [n, var_n] ARITH_SUC_case1) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_SUC n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | Const ("_0", _) -> trans_opt opt_th ARITH_SUC_case2
+    | Comb (Const ("BIT0", _), n) -> trans_opt opt_th (INST [n, var_n] ARITH_SUC_case3)
+    | Comb (Const ("BIT1", _), n) ->
+      let base_th = trans_opt opt_th (INST [n, var_n] ARITH_SUC_case4) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_SUC n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | _ -> failwith "No match: f_SUC"
+     in
+  f_SUC
+;;
+
+let f_ADD =
+  let ARITH_ADD_case1, ARITH_ADD_case2, ARITH_ADD_case3, ARITH_ADD_case4, ARITH_ADD_case5, ARITH_ADD_case6, ARITH_ADD_case7, ARITH_ADD_case8, ARITH_ADD_case9, ARITH_ADD_case10 =
+    match map standardize (local_split_thm ARITH_ADD) with
+    | [th1; th2; th3; th4; th5; th6; th7; th8; th9; th10] -> (th1, th2, th3, th4, th5, th6, th7, th8, th9, th10)
+    | _ -> failwith "error"
+     in
+  let var_m = standardize_tm (mk_var ("m", `:num`)) in
+  let var_n = standardize_tm (mk_var ("n", `:num`)) in
+  let rec f_ADD tm1 tm2 opt_th =
+    match (tm1, tm2) with
+    | (Comb (Const ("NUMERAL", _), m), Comb (Const ("NUMERAL", _), n)) ->
+      let base_th = trans_opt opt_th (INST [n, var_n; m, var_m] ARITH_ADD_case1) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_ADD m n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | (Const ("_0", _), Const ("_0", _)) -> trans_opt opt_th ARITH_ADD_case2
+    | (Const ("_0", _), Comb (Const ("BIT0", _), n)) -> trans_opt opt_th (INST [n, var_n] ARITH_ADD_case3)
+    | (Const ("_0", _), Comb (Const ("BIT1", _), n)) -> trans_opt opt_th (INST [n, var_n] ARITH_ADD_case4)
+    | (Comb (Const ("BIT0", _), n), Const ("_0", _)) -> trans_opt opt_th (INST [n, var_n] ARITH_ADD_case5)
+    | (Comb (Const ("BIT1", _), n), Const ("_0", _)) -> trans_opt opt_th (INST [n, var_n] ARITH_ADD_case6)
+    | (Comb (Const ("BIT0", _), m), Comb (Const ("BIT0", _), n)) ->
+      let base_th = trans_opt opt_th (INST [n, var_n; m, var_m] ARITH_ADD_case7) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_ADD m n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | (Comb (Const ("BIT0", _), m), Comb (Const ("BIT1", _), n)) ->
+      let base_th = trans_opt opt_th (INST [n, var_n; m, var_m] ARITH_ADD_case8) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_ADD m n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | (Comb (Const ("BIT1", _), m), Comb (Const ("BIT0", _), n)) ->
+      let base_th = trans_opt opt_th (INST [n, var_n; m, var_m] ARITH_ADD_case9) in
+      (match concl base_th with
+      | Comb (_, Comb (a1, _)) ->
+        let r1 = f_ADD m n None in
+        TRANS base_th (MK_COMB (REFL a1, r1))
+      | _ -> failwith "bad pattern"
+      )
+    | (Comb (Const ("BIT1", _), m), Comb (Const ("BIT1", _), n)) ->
+      let base_th = trans_opt opt_th (INST [n, var_n; m, var_m] ARITH_ADD_case10) in
+      (match concl base_th with
+      | Comb (_, Comb (a2, Comb (a1, _))) ->
+        let r1 = f_ADD m n None in
+        let r2 =
+          let r2 = MK_COMB (REFL a1, r1) in
+          f_SUC (rand (concl r1)) (Some r2) in
+        TRANS base_th (MK_COMB (REFL a2, r2))
+      | _ -> failwith "bad pattern"
+      )
+    | _ -> failwith "No match: f_ADD"
+     in
+  f_ADD
+;;
+
+let f_MAP_num_num =
+  let MAP_case1, MAP_case2 =
+    match map standardize (inst_type_thms `:(num->num)->(num)list->(num)list` (local_split_thm MAP)) with
+    | [th1; th2] -> (th1, th2)
+    | _ -> failwith "error"
+     in
+  let var_f = standardize_tm (mk_var ("f", `:num->num`)) in
+  let var_h = standardize_tm (mk_var ("h", `:num`)) in
+  let var_t = standardize_tm (mk_var ("t", `:(num)list`)) in
+  let rec f_MAP_num_num tm1 tm2 opt_th =
+    match (tm1, tm2) with
+    | ((f, func_f), Const ("NIL", _)) -> trans_opt opt_th (INST [f, var_f] MAP_case1)
+    | ((f, func_f), Comb (Comb (Const ("CONS", _), h), t)) ->
+      let base_th = trans_opt opt_th (INST [f, var_f; t, var_t; h, var_h] MAP_case2) in
+      (match concl base_th with
+      | Comb (_, Comb (Comb (a1, _), _)) ->
+        let r1 = func_f h None in
+        let r2 = f_MAP_num_num (f, func_f) t None in
+        TRANS base_th (MK_COMB (MK_COMB (REFL a1, r1), r2))
+      | _ -> failwith "bad pattern"
+      )
+    | _ -> failwith "No match: f_MAP_num_num"
+     in
+  f_MAP_num_num
+;;
+
+let result =
+  let tm = `(MAP ((+) 3) [1; SUC 2]):(num)list` in
+  let base_th = REFL tm in
+  match tm with
+  | Comb ((Comb (_, (Comb (_, a2) as a1)) as a7), Comb (a6, Comb (Comb (a4, Comb (_, a3)), a5))) ->
+    let r1 = (a1, f_ADD a2) in
+    let r2 = f_SUC a3 None in
+    let r3 = MK_COMB (MK_COMB (REFL a4, r2), REFL a5) in
+    let r4 = MK_COMB (REFL a6, r3) in
+    let r5 = MK_COMB (REFL a7, r4) in
+    f_MAP_num_num r1 (rand (concl r4)) (Some (TRANS base_th r5))
+  | _ -> failwith "bad pattern"
+  
+;;
