@@ -11,7 +11,7 @@ It is required to have the latest version of the formal inequality [verification
 ## Main Files
 
 - [`tame_defs.hl`](tame_defs.hl): main definitions. This is a slightly modified version of
-HOL Light definitions written by J. Harrison. These definitions are derived from an OCaml translation by F. Wiedijk.
+HOL Light definitions written by J. Harrison. These definitions are derived from an OCaml translation by J. Blanchette and F. Wiedijk.
 
 - [`tame_defs_unrolled.hl`](tame_defs_unrolled.hl): expanded versions of some definitions.
 
