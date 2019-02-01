@@ -220,7 +220,7 @@ let compile_function env func =
       | Assoc_lru _ -> "Assoc_lru.find", "Assoc_lru.add" in
     (* TODO: precise memos *)
     let key_expr = mk_let ("key", 
-      mk_app (Raw "map", [Raw "hash_string_of_term"; mk_list_expr arg_exprs])) in
+      mk_app (Raw "List.map", [Raw "hash_string_of_term"; mk_list_expr arg_exprs])) in
     let name_expr = Raw ("memo_" ^ name) in
     let find_expr = mk_app (Raw memo_find, [name_expr; Raw "key"]) in
     let find_expr = 
@@ -330,7 +330,7 @@ let compile_rules db rules =
         match get_type_inst_const name with
         | None -> e1
         | Some tm -> mk_app (Raw "inst_type_thms", [Type (type_of tm); e1]) in
-      mk_app (Raw "map", [Raw "standardize"; e2]) in
+      mk_app (Raw "List.map", [Raw "standardize"; e2]) in
     let names = enum_names (name ^ "_case") n in
     let pat_names = enum_names "th" n in
     mk_let (String.concat ", " names,
@@ -353,7 +353,7 @@ let compile_rules db rules =
       mk_let ~body:(Some eq_expr) ("abs_tm",
         App (Raw "list_mk_comb", 
           mk_tuple [mk_app (Raw "follow_full_path", [String path; App (Raw "concl", Raw base_name)]);
-                    App (Raw (Format.sprintf "map (C follow_full_path (concl %s))" base_name),
+                    App (Raw (Format.sprintf "List.map (C follow_full_path (concl %s))" base_name),
                          mk_list_expr (map (fun tm -> String (find_full_path ((=) tm) base_tm)) args))])) in
     mk_let (abs_rw.f_name ^ "_th", def_expr) 
   in
@@ -375,7 +375,7 @@ let compile_rules db rules =
             [String path; Raw (Format.sprintf "(rand (concl %s))" case1.th_name)]))
           func.fixed_args) in
       mk_let ("fixed_args", list_expr) in
-    let e2 = App (Raw "map (fun i -> type_of (el i (fixed_args @ args)))", mk_int_list func.poly_indices) in
+    let e2 = App (Raw "List.map (fun i -> type_of (el i (fixed_args @ args)))", mk_int_list func.poly_indices) in
     mk_let (func.arg_ty_name, chain_let [base_args_expr; fixed_args_expr; e2]) 
   in
   let get_cond_th_exprs cond_names =
@@ -628,7 +628,7 @@ let head_split_expr db =
   Let (false, "local_split_thm", [Raw "th"],
     chain_let [
       rewrites; rules;
-      Raw "split_thm th |> map extra_rw |> map extra_rules"
+      Raw "split_thm th |> List.map extra_rw |> List.map extra_rules"
     ], None);;
 
 let derived_thm_expr derived =
