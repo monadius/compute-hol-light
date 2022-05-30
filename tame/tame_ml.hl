@@ -1,0 +1,719 @@
+let ( ** ) = fun f g x -> f(g x);;
+
+let id x = x;;
+
+let rec map_of l k =
+  match l with
+  | ((l, v) :: ps) -> if l = k then Some v else map_of ps k
+  | [] -> None;;
+
+let the (Some x2) = x2;;
+
+let minus_nat m n = max 0 (m - n);;
+
+let rec funpow n f =
+  if n = 0 then id else f ** funpow (minus_nat n 1) f;;
+
+let rec nth (x :: xs) n =
+  (if n = 0 then x
+    else nth xs (n - 1));;
+
+let rec fold f l s =
+  match l with
+  | (x :: xs) -> fold f xs (f x s)
+  | [] -> s;;
+
+let rec rev xs = fold (fun a -> fun b -> a :: b) xs [];;
+
+let rec upt i j = (if i < j then i :: upt (i + 1) j else []);;
+
+let rec zip xs ys =
+  match xs,ys with
+  | (x :: xs),(y :: ys) -> (x, y) :: zip xs ys
+  | xs,[] -> []
+  | [],ys -> [];;
+
+let rec null = function
+  | [] -> true
+  | (x :: xs) -> false;;
+
+let rec last (x :: xs) = (if null xs then x else last xs);;
+
+let rec maps f = function
+  | [] -> []
+  | (x :: xs) -> f x @ maps f xs;;
+
+let rec foldl f a = function
+  | [] -> a
+  | (x :: xs) -> foldl f (f a x) xs;;
+
+let rec foldr f = function
+  | [] -> id
+  | (x :: xs) -> f x ** foldr f xs;;
+
+let rec concat xss = foldr (fun a -> fun b -> a @ b) xss [];;
+
+let rec filter p = function
+  | [] -> []
+  | (x :: xs) -> (if p x then x :: filter p xs else filter p xs);;
+
+let rec member xs y =
+  match xs with
+  | [] -> false
+  | (x :: xs) -> x = y || member xs y;;
+
+let rec rotate1 = function
+  | [] -> []
+  | (x :: xs) -> xs @ [x];;
+
+let rec rotate n = funpow n rotate1;;
+
+let rec hd (x21 :: x22) = x21;;
+
+let rec tl = function
+  | [] -> []
+  | (x21 :: x22) -> x22;;
+
+let rec list_ex p = function
+  | [] -> false
+  | (x :: xs) -> p x || list_ex p xs;;
+
+let rec remdups = function
+  | [] -> []
+  | (x :: xs) -> (if member xs x then remdups xs else x :: remdups xs);;
+
+let rec remove1 x = function
+  | [] -> []
+  | (y :: xs) -> (if x = y then xs else y :: remove1 x xs);;
+
+let rec distinct = function
+  | [] -> true
+  | (x :: xs) -> not (member xs x) && distinct xs;;
+
+let rec map f = function
+  | [] -> []
+  | (x21 :: x22) -> f x21 :: map f x22;;
+
+let rec replicate n x =
+  (if n = 0 then [] else x :: replicate (minus_nat n 1) x);;
+
+let rec gen_length n = function
+  | (x :: xs) -> gen_length (n + 1) xs
+  | [] -> n;;
+
+let rec map_filter f = function
+  | [] -> []
+  | (x :: xs) ->
+    (match f x with None -> map_filter f xs | Some y -> y :: map_filter f xs);;
+
+let rec list_update xs i y =
+  match xs with
+  | [] -> []
+  | (x :: xs) ->
+    (if i = 0 then y :: xs else x :: list_update xs (minus_nat i 1) y);;
+
+let rec list_all p = function
+  | [] -> true
+  | (x :: xs) -> p x && list_all p xs;;
+
+let rec all_interval_nat p i j =
+  j <= i || p i && all_interval_nat p (i + 1) j;;
+
+let rec size_list x = gen_length 0 x;;
+
+let rec mapAt ns f asa =
+  match ns with
+  | [] -> asa
+  | (n :: ns) ->
+    (if n < (size_list asa)
+      then mapAt ns f (list_update asa n (f (nth asa n)))
+      else mapAt ns f asa);;
+
+let rec splitAtRec c bs = function
+  | [] -> (bs, [])
+  | (a :: asa) ->
+    (if a = c then (bs, asa) else splitAtRec c (bs @ [a]) asa);;
+
+let rec splitAt c asa = splitAtRec c [] asa;;
+
+let rec between vs ram_1 ram_2 =
+  let (pre_1, post_1) = splitAt ram_1 vs in
+    (if member post_1 ram_2
+      then let (pre_2, _) = splitAt ram_2 post_1 in
+             pre_2
+      else let (pre_2, _) = splitAt ram_2 pre_1 in
+             post_1 @ pre_2);;
+
+let rec minimal m (x :: xs) =
+  (if null xs then x
+    else let mxs = minimal m xs in
+           (if m x <= m mxs then x else mxs));;
+
+let rec replace x ys = function
+  | [] -> []
+  | (z :: zs) ->
+    (if z = x then ys @ zs else z :: replace x ys zs);;
+
+let rec removeKey a ps =
+  filter (fun p -> not (a = (fst p))) ps;;
+
+let rec removeKeyList ws ps =
+  match ws with
+  | [] -> ps
+  | (w :: ws) -> removeKey w (removeKeyList ws ps);;
+
+type facetype = Final | Nonfinal;;
+
+type face = Face of int list * facetype;;
+
+type graph = Graph of face list * int * (face list) list * int list;;
+
+let rec vertices_face (Face (vs, f)) = vs;;
+
+let rec final_face = function
+  | (Face (vs, Nonfinal)) -> false
+  | (Face (vs, Final)) -> true;;
+
+let rec faceListAt (Graph (fs, n, f, h)) = f;;
+
+let rec facesAt g v = nth (faceListAt g) v;;
+
+let rec tri g v =
+  size_list
+    (filter
+      (fun f ->
+        final_face f && (size_list (vertices_face f)) = 3)
+      (facesAt g v));;
+
+let rec quad g v =
+  size_list
+    (filter
+      (fun f ->
+        final_face f && (size_list (vertices_face f)) = 4)
+      (facesAt g v));;
+
+let rec faces (Graph (fs, n, f, h)) = fs;;
+
+let rec graph n =
+  let vs = upt 0 n in
+  let fs = [Face (vs, Final); Face (rev vs, Nonfinal)] in
+    Graph (fs, n, replicate n fs, replicate n 0);;
+
+let rec degree g v = size_list (facesAt g v);;
+
+let rec except g v =
+  size_list
+    (filter
+      (fun f ->
+        final_face f && 5 <= (size_list (vertices_face f)))
+      (facesAt g v));;
+
+let rec finals g = filter final_face (faces g);;
+
+let rec heights (Graph (fs, n, f, h)) = h;;
+
+let rec height g v = nth (heights g) v;;
+
+let rec nextElem asa b x =
+  match asa with
+  | [] -> b
+  | (a :: asa) ->
+    (if x = a then (match asa with [] -> b | aa :: _ -> aa)
+      else nextElem asa b x);;
+
+let rec setFinal f = Face (vertices_face f, Final);;
+
+let rec nextVertex f = let vs = vertices_face f in
+                     nextElem vs (hd vs);;
+
+let rec neighbors g v = map (fun f -> nextVertex f v) (facesAt g v);;
+
+let rec nonFinals g = filter (fun f -> not (final_face f)) (faces g);;
+
+let rec vertextype g v = (tri g v, (quad g v, except g v));;
+
+let rec finalVertex g v = list_all final_face (facesAt g v);;
+
+let rec final_graph g = null (nonFinals g);;
+
+let rec nextVertices f n v = funpow n (nextVertex f) v;;
+
+let rec countVertices (Graph (fs, n, f, h)) = n;;
+
+let rec directedLength f a b =
+  (if a = b then 0
+    else (size_list
+             (between (vertices_face f) a b)) +
+           1);;
+
+let rec vertices_graph (Graph (fs, n, f, h)) = upt 0 n;;
+
+let rec tame10 g =
+  let n = countVertices g in
+    13 <= n && n <= 15;;
+
+let rec tame11a g =
+  list_all
+    (fun v ->
+      3 <= (degree g v))
+    (vertices_graph g);;
+
+let rec tame11b g =
+  list_all
+    (fun v ->
+      (degree g v) <= (if (except g v) = 0 then 7 else 6))
+    (vertices_graph g);;
+
+let rec tame12o g =
+  list_all
+    (fun v ->
+      (if not ((except g v) = 0) && (degree g v) = 6
+        then (vertextype g v) = (5, (0, 1))
+        else true))
+    (vertices_graph g);;
+
+let rec tame10ub g =
+  (countVertices g) <= 15;;
+
+let excessTCount : int = 6295;;
+
+let squanderTarget : int = 15410;;
+
+let rec squanderFace n =
+  (if n = 3
+    then 0
+    else (if n = 4
+           then 2058
+           else (if n = 5
+                  then 4819
+                  else (if n = 6
+                         then 7120
+                         else squanderTarget))));;
+
+let rec squanderVertex p q =
+  (if p = 0 && q = 3
+    then 6177
+    else (if p = 0 && q = 4
+           then 9696
+           else (if p = 1 && q = 2
+                  then 6557
+                  else (if p = 1 && q = 3
+                         then 6176
+                         else (if p = 2 && q = 1
+                                then 7967
+                                else (if p = 2 && q = 2
+                                       then 4116
+                                       else (if p = 2 && q = 3 then 12846
+      else (if p = 3 && q = 1
+             then 3106
+             else (if p = 3 && q = 2
+                    then 8165
+                    else (if p = 4 && q = 0
+                           then 3466
+                           else (if p = 4 && q = 1
+                                  then 3655
+                                  else (if p = 5 && q = 0
+ then 395
+ else (if p = 5 && q = 1
+        then 11354
+        else (if p = 6 && q = 0
+               then 6854
+               else (if p = 7 && q = 0
+                      then 14493
+                      else squanderTarget)))))))))))))));;
+
+let rec maxGon p = p + 3;;
+
+let rec seed p = graph (maxGon p);;
+
+let rec duplicateEdge g f a b =
+  2 <= (directedLength f a b) &&
+    (2 <= (directedLength f b a) &&
+      member (neighbors g a) b);;
+
+let rec containsUnacceptableEdgeSnd n v = function
+  | [] -> false
+  | (w :: ws) ->
+    (match ws with [] -> false
+      | wa :: _ ->
+        (if v < w && (w < wa && n w wa)
+          then true else containsUnacceptableEdgeSnd n w ws));;
+
+let rec containsUnacceptableEdge n = function
+  | [] -> false
+  | (v :: vs) ->
+    (match vs with [] -> false
+      | w :: _ ->
+        (if v < w && n v w then true
+          else containsUnacceptableEdgeSnd n v vs));;
+
+let rec containsDuplicateEdge g f v is =
+  containsUnacceptableEdge
+    (fun i -> fun j ->
+      duplicateEdge g f (nextVertices f i v) (nextVertices f j v))
+    is;;
+
+(* trie *)
+
+type ('a, 'b) trie = Trie of 'b option * ('a * ('a, 'b) trie) list;;
+
+let empty_trie : ('a, 'b) trie = Trie (None, []);;
+
+let rec lookup_trie (Trie (v, m)) = function
+  | [] -> v
+  | (k :: ks) ->
+    (match map_of m k with None -> None | Some st -> lookup_trie st ks);;
+
+let rec update_with_aux v k f = function
+  | [] -> [(k, f v)]
+  | (p :: ps) ->
+    (if fst p = k then (k, f (snd p)) :: ps
+      else p :: update_with_aux v k f ps);;
+
+let rec update_with_trie ks f (Trie (v, ps)) =
+  match ks with
+  | [] -> Trie (Some (f v), ps)
+  | (k :: ks) ->
+    Trie (v, update_with_aux empty_trie k (update_with_trie ks f) ps);;
+
+let rec update_trie ks v = update_with_trie ks (fun _ -> v);;
+
+let rec lookup_tries t ks =
+  (match lookup_trie t ks with None -> [] | Some vs -> vs);;
+
+(* end: trie *)
+
+let rec minimalFace x = minimal (size_list ** vertices_face) x;;
+
+let rec minimalVertex g f =
+  minimal (height g) (vertices_face f);;
+
+let rec listSum ls f =
+  match ls with
+  | [] -> 0
+  | (l :: ls) -> (f l) + (listSum ls f);;
+
+let rec heightsNewVertices h_1 h_2 n =
+  map
+    (fun i -> min ((h_1 + i) + 1) (minus_nat (h_2 + n) i))
+    (upt 0 n);;
+
+let rec replacefacesAt ns fa fs f =
+  mapAt ns (replace fa fs) f;;
+
+let rec split_face f ram_1 ram_2 newVs =
+  let vs = vertices_face f in
+  let
+    f_1 = [ram_1] @ between vs ram_1 ram_2 @ [ram_2] and
+    f_2 = [ram_2] @ between vs ram_2 ram_1 @ [ram_1]
+  in
+    (Face (rev newVs @ f_1, Nonfinal),
+      Face (f_2 @ newVs, Nonfinal));;
+
+let rec splitFace g ram_1 ram_2 oldF newVs =
+  let
+    fs = faces g and
+    n = countVertices g and
+    fsa = faceListAt g and
+    h = heights g and
+    vs_1 = between (vertices_face oldF) ram_1 ram_2 and
+    vs_2 = between (vertices_face oldF) ram_2 ram_1 and
+    (f_1, f_2) = split_face oldF ram_1 ram_2 newVs in
+  let fsaa = replacefacesAt vs_1 oldF [f_1] fsa in
+  let fsab = replacefacesAt vs_2 oldF [f_2] fsaa in
+  let fsac = replacefacesAt [ram_1] oldF [f_2; f_1] fsab in
+  let fsad = replacefacesAt [ram_2] oldF [f_1; f_2] fsac in
+  let fsae = fsad @ replicate (size_list newVs) [f_1; f_2] in
+    (f_1, (f_2, Graph
+                  (replace oldF [f_2] fs @ [f_1],
+                    n + (size_list newVs), fsae,
+                    h @ heightsNewVertices (nth h ram_1) (nth h ram_2)
+                          (size_list newVs))));;
+
+let rec makeFaceFinalFaceList f fs =
+  replace f [setFinal f] fs;;
+
+let rec makeFaceFinal f g =
+  Graph
+    (makeFaceFinalFaceList f (faces g), countVertices g,
+      map (makeFaceFinalFaceList f) (faceListAt g), heights g);;
+
+let rec subdivFacea g f u n = function
+  | [] -> makeFaceFinal f g
+  | (vo :: vos) ->
+    (match vo with None -> subdivFacea g f u (n + 1) vos
+      | Some v ->
+        (if (nextVertex f u) = v &&
+              n = 0
+          then subdivFacea g f v 0 vos
+          else let ws = upt (countVertices g) ((countVertices g) + n) in
+               let (_, (f_2, ga)) = splitFace g u v f ws in
+                 subdivFacea ga f_2 v 0 vos));;
+
+let rec subdivFace g f vos =
+  subdivFacea g f (the (hd vos)) 0 (tl vos);;
+
+
+let rec sub asa n = Array.get asa n;;
+
+let rec of_fun f n = Array.init n f;;
+
+let rec tabulate2 m n f = of_fun (fun i -> of_fun (f i) n) m;;
+
+let rec enumAppend nmax iss =
+  maps
+    (fun is ->
+      map (fun n -> is @ [n]) (upt (last is) (nmax + 1)))
+    iss;;
+
+let rec enumBase nmax =
+  map (fun i -> [i]) (upt 0 (nmax + 1));;
+
+let rec enumerator inner outer =
+  let
+    nmax = minus_nat outer 2 and
+    k = minus_nat inner 3
+  in
+    map
+      (fun is -> [0] @ is @ [minus_nat outer 1])
+      (funpow k (enumAppend nmax) (enumBase nmax));;
+
+let enumTab = tabulate2 9 9 enumerator;;
+
+let rec enum inner outer =
+  (if inner < 9 &&
+        outer < 9
+    then sub (sub enumTab inner) outer
+    else enumerator inner outer);;
+
+let rec hideDupsRec a = function
+  | [] -> []
+  | (b :: bs) ->
+    (if a = b then None :: hideDupsRec b bs
+      else Some b :: hideDupsRec b bs);;
+
+let rec hideDups = function
+  | [] -> []
+  | (b :: bs) -> Some b :: hideDupsRec b bs;;
+
+let rec indexToVertexList f v is =
+  hideDups (map (fun k -> nextVertices f k v) is);;
+
+let rec notame g = not (tame10ub g && tame11b g);;
+
+let d4_const : int =
+  squanderFace 4;;
+
+let d3_const : int =
+  squanderFace 3;;
+
+let rec excessAtType t q e =
+  (if e = 0
+    then (if 7 < (t + q)
+           then squanderTarget
+           else (minus_nat (minus_nat (squanderVertex t q) (t * d3_const)) (q * d4_const)))
+    else (if not (((t + q) + e) = 6)
+           then 0
+           else (if t = 5 then excessTCount else squanderTarget)));;
+
+let rec excessAt g v =
+  (if not (finalVertex g v) then 0
+    else excessAtType (tri g v) (quad g v) (except g v));;
+
+let rec faceSquanderLowerBound g =
+  listSum (finals g)
+    (fun f -> squanderFace (size_list (vertices_face f)));;
+
+let rec deleteAround g v ps =
+  let
+    vs = (fun f ->
+        let n = nextVertex f v in
+          (if (size_list (vertices_face f)) = 4
+            then [n; nextVertex f n] else [n])) in
+    removeKeyList (maps vs (facesAt g v)) ps;;
+
+let rec excessNotAtRec = function
+  | [] -> (fun _ -> 0)
+  | ((x, y) :: ps) ->
+    (fun g ->
+      max (excessNotAtRec ps g)
+        (y + (excessNotAtRec (deleteAround g x ps) g)));;
+
+let rec excessTable g =
+  map_filter
+    (fun v ->
+      let e = excessAt g v in
+        (if 0 < e then Some (v, e) else None));;
+
+let rec excessNotAt g v_opt =
+  let ps = excessTable g (vertices_graph g) in
+    (match v_opt with None -> excessNotAtRec ps g
+      | Some v -> excessNotAtRec (deleteAround g v ps) g);;
+
+let rec squanderLowerBound g =
+  (faceSquanderLowerBound g) + (excessNotAt g None);;
+
+let rec polysizes p g =
+  let lb = squanderLowerBound g in
+    filter
+      (fun n -> (lb + (squanderFace n)) < squanderTarget)
+      (upt 3 ((maxGon p) + 1));;
+
+let rec is_tame13a g = (squanderLowerBound g) < squanderTarget;;
+
+let rec generatePolygonTame n v f g =
+  let enumeration = enum n (size_list (vertices_face f)) in
+  let enumerationa =
+      filter (fun is -> not (containsDuplicateEdge g f v is)) enumeration in
+  let vertexLists = map (indexToVertexList f v) enumerationa in
+    filter (fun ga -> not (notame ga))
+      (map (subdivFace g f) vertexLists);;
+
+let rec next_tame0 p g =
+  let fs = nonFinals g in
+    (if null fs then []
+      else let f = minimalFace fs in
+           let v = minimalVertex g f in
+             maps (fun i -> generatePolygonTame i v f g) (polysizes p g));;
+
+let rec is_tame g =
+  tame10 g &&
+    (tame11a g && (tame12o g && is_tame13a g));;
+
+let rec next_tame p =
+  filter (fun g -> not (final_graph g) || is_tame g) **
+    next_tame0 p;;
+
+let rec nof_vertices = size_list ** remdups ** concat;;
+
+
+let rec qsort le = function
+  | [] -> []
+  | (x :: xs) ->
+    qsort le (filter (fun y -> not (le x y)) xs) @
+      [x] @ qsort le (filter (le x) xs);;
+
+let rec hash fs =
+  let n = nof_vertices fs in
+    [n; size_list fs] @
+      qsort (fun x -> fun y -> y < x)
+        (map
+          (fun i ->
+            foldl (+) 0
+              (map_filter
+                (fun x ->
+                  (if member x i
+                    then Some (size_list x) else None))
+                fs))
+          (upt 0 n));;
+
+let rec fgraph g = map vertices_face (faces g);;
+
+let rec merge xys i =
+  match xys with
+  | [] -> i
+  | (xy :: xys) ->
+    let (x, _) = xy in
+      (if list_all (fun (xa, _) -> not (x = xa)) i
+        then xy :: merge xys i else merge xys i);;
+
+let rec compat ia i =
+  list_all
+    (fun (x, y) ->
+      list_all
+        (fun (xa, ya) ->
+          (x = xa) = (y = ya))
+        i)
+    ia;;
+
+
+let rec pr_iso_test_rec i fs_1 fs_2 =
+  match fs_1 with
+  | [] -> null fs_2
+  | (f_1 :: fs_1) ->
+    list_ex
+      (fun f_2 ->
+        (size_list f_1) = (size_list f_2) &&
+          not (all_interval_nat
+                (not **
+                  (fun n ->
+                    let ia = zip f_1 (rotate n f_2) in
+                      compat ia i &&
+                        pr_iso_test_rec (merge ia i) fs_1
+                          (remove1 f_2 fs_2)))
+                0 (size_list f_2)))
+      fs_2;;
+
+let rec pr_iso_test fs_1 fs_2 = pr_iso_test_rec [] fs_1 fs_2;;
+
+let rec iso_test g_1 g_2 =
+  pr_iso_test g_1 g_2 ||
+    pr_iso_test g_1 (map rev g_2);;
+
+let counter = ref 0;;
+let ws_size = ref 0;;
+let finals = ref 0;;
+
+let rec insert_mod_trie x m =
+  let k = hash x in
+  let ys = lookup_tries m k in
+    (if list_ex (iso_test x) ys
+      then m else 
+      (Format.printf "counter = %d@." !counter; update_trie k (x :: ys) m));;
+
+let rec insert_mod2_trie p f x s =
+  (if p x then (incr finals; insert_mod_trie (f x) s) else s);;
+
+
+let rec worklist_tree_aux succs f (ws, s) =
+  incr counter;
+  ws_size := max !ws_size (List.length ws);
+  (match ws with [] -> Some ([], s)
+    | x :: wsa -> worklist_tree_aux succs f (succs x @ wsa, f x s));;
+
+let rec worklist_tree succs f ws s =
+  (match worklist_tree_aux succs f (ws, s) with None -> None
+    | Some a -> let (_, aa) = a in
+                  Some aa);;
+
+let rec worklist_tree_coll_aux_trie succs p f =
+  worklist_tree succs (insert_mod2_trie p f);;
+
+let rec worklist_tree_coll_trie succs p f ws =
+  worklist_tree_coll_aux_trie succs p f ws (Trie (None, []));;
+
+let rec enum_filter_finals succs =
+  counter := 0;
+  finals := 0;
+  ws_size := 0;
+  worklist_tree_coll_trie succs final_graph fgraph;;
+
+let rec tameEnumFilter p = enum_filter_finals (next_tame p) [seed p];;
+
+let rec worklist_tree_bounded n succs f ws s =
+  ws_size := max !ws_size (List.length ws);
+  incr counter;
+  match ws with
+  | [] -> [], s
+  | x :: wsa -> 
+    if n <= 0 then ws, s
+    else
+      worklist_tree_bounded (n - 1) succs f (succs x @ wsa) (f x s);;
+
+let tameEnumFilterBounded p n =
+  finals := 0;
+  ws_size := 0;
+  counter := 0;
+  worklist_tree_bounded n 
+    (next_tame p) (insert_mod2_trie final_graph fgraph)
+    [seed p] (Trie (None, []));;
+
+let count_finals_bounded p n =
+  finals := 0;
+  ws_size := 0;
+  counter := 0;
+  worklist_tree_bounded n
+    (next_tame p) 
+    (fun g c -> if final_graph g then c + 1 else c) 
+    [seed p] 0;;
+
