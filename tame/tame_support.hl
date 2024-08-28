@@ -1,6 +1,8 @@
 needs "tame/tame_defs.hl";;
 needs "tame/tame_defs_unrolled.hl";;
 
+load_path := "../formal_ineqs" :: !load_path;;
+
 needs "arith_options.hl";;
 Arith_options.base := 100;;
 Arith_options.cached := false;;

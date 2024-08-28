@@ -1,8 +1,17 @@
 {
+    "hol-light.simpleSelection": false,
     "hol-light.exePaths": [
-        "ocaml",
-        "/Users/monad/Work/projects/hol/hol_experiments",
-        "/Users/monad/Work/projects/hol/hol_light",
-        "/Users/monad/Work/projects/hol/hol_remote"
-    ]
+        "/mnt/data/work/git/forks/hol-light/dmtcp_restart_script.sh",
+        "/mnt/data/work/git/forks/hol-light/hol.sh"
+    ],
+    "hol-light.path": "/mnt/data/work/git/forks/hol-light",
+    "editor.quickSuggestions": {
+        "strings": "on"
+    },
+    "hol-light.rootPaths": [
+        ".",
+        "{hol}",
+        "{workspace}",
+        "{workspace}/../formal_ineqs"
+    ],
 }
