@@ -227,7 +227,7 @@ let find_most_specific_entry db const =
     let _, ty = dest_const const in
     find_entries db const
       |> List.map (fun e -> match_length (type_of e.const) ty, e)
-      |> List.sort (fun (l1, _) (l2, _) -> Pervasives.compare l1 l2)
+      |> List.sort (fun (l1, _) (l2, _) -> Stdlib.compare l1 l2)
       |> List.hd |> snd
   with Failure _ | Not_found ->
     failwith (Format.sprintf "find_most_specific_entry: no entries for `%s`"

@@ -14,4 +14,7 @@
         "{workspace}",
         "{workspace}/../formal_ineqs"
     ],
+    "files.associations": {
+        "*.ml": "hol-light-ocaml"
+    },
 }

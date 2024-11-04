@@ -55,7 +55,7 @@ let create_counter, reset_all_counters, get_counter, get_all_counters =
   let get name = !(Hashtbl.find counters name) in
   let get_all () =
     [] |> Hashtbl.fold (fun name v ls -> (name, !v) :: ls) counters
-       |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1) in
+       |> List.sort (fun (_, v1) (_, v2) -> Stdlib.compare v2 v1) in
   create, reset_all, get, get_all;;
 
 let rec hash_string_of_term tm =
@@ -245,19 +245,19 @@ let create_arg_list, clear_arg_lists, all_arg_lists =
 module Term_set = Set.Make(
   struct 
     type t = term
-    let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
+    let compare (t1:t) (t2:t) = Stdlib.compare t1 t2
   end);;
 
 module Type_set = Set.Make(
   struct
     type t = hol_type
-    let compare (t1:t) (t2:t) = Pervasives.compare t1 t2
+    let compare (t1:t) (t2:t) = Stdlib.compare t1 t2
   end);;
 
 module Term_list_set = Set.Make(
   struct
     type t = term list
-    let compare (ts1:t) (ts2:t) = Pervasives.compare ts1 ts2
+    let compare (ts1:t) (ts2:t) = Stdlib.compare ts1 ts2
   end);;
 
 let setify_types tys =
@@ -277,7 +277,7 @@ let freqs list =
     incr v in
   List.iter count list;
   Hashtbl.fold (fun k v r -> (k, !v) :: r) table []
-    |> List.sort (fun (_, v1) (_, v2) -> Pervasives.compare v2 v1);;
+    |> List.sort (fun (_, v1) (_, v2) -> Stdlib.compare v2 v1);;
 
 let analyze_arg_list args =
   let n = List.length args in
@@ -287,7 +287,7 @@ let analyze_arg_list args =
 let analyze_arg_lists () =
   all_arg_lists ()
     |> List.map (fun (name, args) -> name, analyze_arg_list args)
-    |> List.sort (fun (_, (v1, _)) (_, (v2, _)) -> Pervasives.compare v2 v1);;
+    |> List.sort (fun (_, (v1, _)) (_, (v2, _)) -> Stdlib.compare v2 v1);;
 
 (* A performance improvement trick from calc_num.ml *)
 let standardize, standardize_tm, standardize_list, standardize_reset, standardize_enable =

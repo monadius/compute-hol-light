@@ -144,7 +144,7 @@ let compile_function env func =
       if mem i !used_indices then begin
         let name' = variant_name !all_names name in
         all_names := name' :: !all_names;
-        guards := (Format.sprintf "Pervasives.compare %s %s = 0" name name') :: !guards;
+        guards := (Format.sprintf "Stdlib.compare %s %s = 0" name name') :: !guards;
         name'
       end 
       else begin
