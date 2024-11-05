@@ -1,6 +1,7 @@
 {
     "hol-light.simpleSelection": false,
     "hol-light.exePaths": [
+        "/mnt/data/work/git/my/compute-hol-light/dmtcp_restart_script.sh",
         "/mnt/data/work/git/forks/hol-light/dmtcp_restart_script.sh",
         "/mnt/data/work/git/forks/hol-light/hol.sh"
     ],
@@ -12,7 +13,8 @@
         ".",
         "{hol}",
         "{workspace}",
-        "{workspace}/../formal_ineqs"
+        "{workspace}/../formal_ineqs",
+        "/mnt/data/work/git/forks/s2n-bignum"
     ],
     "files.associations": {
         "*.ml": "hol-light-ocaml"

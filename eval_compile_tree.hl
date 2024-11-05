@@ -98,24 +98,27 @@ let build_eval_tree db =
   in
   build;;
 
-let optimize_eval_tree =
-  let split_args head args =
-    let refls, rest = split_while is_eval_tree_refl args in
-    let head' = List.fold_left (curry mk_comb) head 
-                  (List.map get_eval_term refls) in
-    head', rest in
-  let rec optimize = function
-    | Refl _ as t -> t
-    | Func_app ({app_type = Basic_app head; applied_args = args} as app) ->
-      let head', args' = split_args head (List.map optimize args) in
-      if args' = [] && app.extra_args = [] && app.fixed_args = [] then
-        Refl head'
-      else
-        Func_app {app with app_type = Basic_app head'; applied_args = args'}
-    | Func_app ({app_type = t; applied_args = args} as app) ->
-      let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
-      Func_app {app with app_type = t'; applied_args = List.map optimize args} in
-  optimize;;
+  let optimize_eval_tree =
+    let is_control = function
+      | Const ("COND", _) | Const ("/\\", _) | Const ("\\/", _) -> true
+      | _ -> false in
+    let split_args head args =
+      let refls, rest = split_while is_eval_tree_refl args in
+      let head' = List.fold_left (curry mk_comb) head 
+                    (List.map get_eval_term refls) in
+      head', rest in
+    let rec optimize = function
+      | Refl _ as t -> t
+      | Func_app ({app_type = Basic_app head; applied_args = args} as app) when not (is_control head) ->
+        let head', args' = split_args head (List.map optimize args) in
+        if args' = [] && app.extra_args = [] && app.fixed_args = [] then
+          Refl head'
+        else
+          Func_app {app with app_type = Basic_app head'; applied_args = args'}
+      | Func_app ({app_type = t; applied_args = args} as app) ->
+        let t' = match t with Abs_app (tm, body) -> Abs_app (tm, optimize body) | _ -> t in
+        Func_app {app with app_type = t'; applied_args = List.map optimize args} in
+    optimize;;
 
 
 type pat = 
