@@ -34,17 +34,20 @@ prioritize_num();;
 
 let decode_rw = 
   let rw = bool_compset() in
+  add_thms [obind; LET_END_DEF] rw;
   add_conv (`_BITMATCH`, 2, bitmatch_memo_conv) rw;
   add_thms [decode] rw;
   List.iter (fun tm -> add_conv (tm, 1, REG_CONV) rw) [`XREG'`; `WREG'`; `QREG'`; `DREG'`; `XREG_SP`; `WREG_SP`];
   add_thms [arm_adcop; arm_addop; arm_logop; arm_movop; arm_csop; arm_lsvop; arm_ccop; arm_bfmop; arm_ldst; arm_ldst_q; arm_ldst_d; arm_ldstb; arm_ldstp; arm_ldstp_d; arm_adv_simd_expand_imm] rw;
   add_conv (`bit`, 2, WORD_RED_CONV) rw;
-  add_thms [decode_shift; decode_extendtype];
+  add_conv (`Condition`, 1, CONDITION_CONV) rw;
+  add_thms [decode_shift; decode_extendtype] rw;
   add_conv (`decode_bitmask`, 3, DECODE_BITMASK_CONV) rw;
   List.iter (fun tm -> add_conv (tm, 1, WORD_RED_CONV) rw) [`word_clz`; `word_ctz`; `word_zx`; `word_sx`; `word_not`];
   List.iter (fun tm -> add_conv (tm, 2, WORD_RED_CONV) rw) [`word_join`; `word_sub`; `word_subword`];
   add_conv (`(=):N word -> N word -> bool`, 2, WORD_RED_CONV) rw;
   List.iter (fun tm -> add_conv (tm, 2, NUM_RED_CONV) rw) [`(=):num -> num -> bool`; `<=`; `>=`; `<`; `>`; `*`; `+`; `-`; `DIV`; `EXP`];
+  add_conv (`(*):int -> int -> int`, 2, INT_RED_CONV) rw;
   add_conv (`val`, 1, WORD_RED_CONV) rw;
   add_conv (`ival`, 1, WORD_RED_CONV) rw;
   rw;;
@@ -57,4 +60,82 @@ let tm = `decode (word 0x385ff422:int32)`;;
 time (CBV_CONV decode_rw) tm;;
 time PURE_DECODE_CONV tm;;
 
+(* Examples from https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs *)
+
+let bignum_cmul_p25519 =
+[
+  0xa9402047;       (* arm_LDP X7 X8 X2 (Immediate_Offset (iword (&0))) *)
+  0xa9412849;       (* arm_LDP X9 X10 X2 (Immediate_Offset (iword (&16))) *)
+  0x9b077c23;       (* arm_MUL X3 X1 X7 *)
+  0x9b087c24;       (* arm_MUL X4 X1 X8 *)
+  0x9b097c25;       (* arm_MUL X5 X1 X9 *)
+  0x9b0a7c26;       (* arm_MUL X6 X1 X10 *)
+  0x9bc77c27;       (* arm_UMULH X7 X1 X7 *)
+  0x9bc87c28;       (* arm_UMULH X8 X1 X8 *)
+  0x9bc97c29;       (* arm_UMULH X9 X1 X9 *)
+  0x9bca7c2a;       (* arm_UMULH X10 X1 X10 *)
+  0xab070084;       (* arm_ADDS X4 X4 X7 *)
+  0xba0800a5;       (* arm_ADCS X5 X5 X8 *)
+  0xba0900c6;       (* arm_ADCS X6 X6 X9 *)
+  0xba1f014a;       (* arm_ADCS X10 X10 XZR *)
+  0x91000548;       (* arm_ADD X8 X10 (rvalue (word 1)) *)
+  0xab0600df;       (* arm_CMN X6 X6 *)
+  0xb24100c6;       (* arm_ORR X6 X6 (rvalue (word 9223372036854775808)) *)
+  0x9a0a0108;       (* arm_ADC X8 X8 X10 *)
+  0xd2800269;       (* arm_MOV X9 (rvalue (word 19)) *)
+  0x9b097d07;       (* arm_MUL X7 X8 X9 *)
+  0x9bc97d0a;       (* arm_UMULH X10 X8 X9 *)
+  0xab070063;       (* arm_ADDS X3 X3 X7 *)
+  0xba0a0084;       (* arm_ADCS X4 X4 X10 *)
+  0xba1f00a5;       (* arm_ADCS X5 X5 XZR *)
+  0xba1f00c6;       (* arm_ADCS X6 X6 XZR *)
+  0x9a9f3129;       (* arm_CSEL X9 X9 XZR Condition_CC *)
+  0xeb090063;       (* arm_SUBS X3 X3 X9 *)
+  0xfa1f0084;       (* arm_SBCS X4 X4 XZR *)
+  0xfa1f00a5;       (* arm_SBCS X5 X5 XZR *)
+  0xda1f00c6;       (* arm_SBC X6 X6 XZR *)
+  0x9240f8c6;       (* arm_AND X6 X6 (rvalue (word 9223372036854775807)) *)
+  0xa9001003;       (* arm_STP X3 X4 X0 (Immediate_Offset (iword (&0))) *)
+  0xa9011805;       (* arm_STP X5 X6 X0 (Immediate_Offset (iword (&16))) *)
+  0xd65f03c0        (* arm_RET X30 *)
+];;
+
+let tms = List.map (fun n -> mk_comb (`decode`, mk_comb (`word:num -> int32`, mk_small_numeral n))) bignum_cmul_p25519;;
+time (List.map PURE_DECODE_CONV) tms;;
+time (List.map (CBV_CONV decode_rw)) tms;;
+
+let bignum_copy_row_from_table_mc = 
+[
+  0xb4000342;       (* arm_CBZ X2 (word 104) *)
+  0xb4000323;       (* arm_CBZ X3 (word 100) *)
+  0xaa0303e5;       (* arm_MOV X5 X3 *)
+  0xaa0003e6;       (* arm_MOV X6 X0 *)
+  0xf90000df;       (* arm_STR XZR X6 (Immediate_Offset (word 0)) *)
+  0x910020c6;       (* arm_ADD X6 X6 (rvalue (word 8)) *)
+  0xf10004a5;       (* arm_SUBS X5 X5 (rvalue (word 1)) *)
+  0x54ffffa1;       (* arm_BNE (word 2097140) *)
+  0xaa1f03e5;       (* arm_MOV X5 XZR *)
+  0xaa0103e8;       (* arm_MOV X8 X1 *)
+  0xeb0400bf;       (* arm_CMP X5 X4 *)
+  0xda9f13e6;       (* arm_CSETM X6 Condition_EQ *)
+  0xaa0303e7;       (* arm_MOV X7 X3 *)
+  0xaa0003e9;       (* arm_MOV X9 X0 *)
+  0xf940010a;       (* arm_LDR X10 X8 (Immediate_Offset (word 0)) *)
+  0xf940012b;       (* arm_LDR X11 X9 (Immediate_Offset (word 0)) *)
+  0x8a06014a;       (* arm_AND X10 X10 X6 *)
+  0xaa0a016b;       (* arm_ORR X11 X11 X10 *)
+  0xf900012b;       (* arm_STR X11 X9 (Immediate_Offset (word 0)) *)
+  0x91002108;       (* arm_ADD X8 X8 (rvalue (word 8)) *)
+  0x91002129;       (* arm_ADD X9 X9 (rvalue (word 8)) *)
+  0xf10004e7;       (* arm_SUBS X7 X7 (rvalue (word 1)) *)
+  0x54ffff01;       (* arm_BNE (word 2097120) *)
+  0x910004a5;       (* arm_ADD X5 X5 (rvalue (word 1)) *)
+  0xeb0200bf;       (* arm_CMP X5 X2 *)
+  0x54fffe21;       (* arm_BNE (word 2097092) *)
+  0xd65f03c0        (* arm_RET X30 *)
+];;
+
+let tms = List.map (fun n -> mk_comb (`decode`, mk_comb (`word:num -> int32`, mk_small_numeral n))) bignum_copy_row_from_table_mc;;
+time (List.map PURE_DECODE_CONV) tms;;
+time (List.map (CBV_CONV decode_rw)) tms;;
 
