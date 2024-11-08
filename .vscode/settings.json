@@ -3,7 +3,8 @@
     "hol-light.exePaths": [
         "/mnt/data/work/git/my/compute-hol-light/dmtcp_restart_script.sh",
         "/mnt/data/work/git/forks/hol-light/dmtcp_restart_script.sh",
-        "/mnt/data/work/git/forks/hol-light/hol.sh"
+        "/mnt/data/work/git/forks/hol-light/hol.sh",
+        "/mnt/data/work/git/my/compute-hol-light/dmtcp_restart_script-x86.sh"
     ],
     "hol-light.path": "/mnt/data/work/git/forks/hol-light",
     "editor.quickSuggestions": {
